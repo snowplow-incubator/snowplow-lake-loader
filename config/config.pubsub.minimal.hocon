@@ -1,0 +1,17 @@
+{
+  "input": {
+    "subscription": "projects/myproject/subscriptions/snowplow-enriched"
+  }
+
+  "output": {
+
+    "good": {
+      "location": "gs://my-bucket/events"
+    }
+
+    "bad": {
+      "topic": "projects/myproject/topics/snowplow-bad"
+    }
+
+  }
+}
