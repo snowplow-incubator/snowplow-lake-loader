@@ -16,3 +16,14 @@ trait Checkpointer[F[_], C] extends Monoid[C] {
   def checkpoint(c: C): F[Unit]
 
 }
+
+object Checkpointer {
+
+  def apply[F[_], C: Monoid](f: C => F[Unit]): Checkpointer[F, C] =
+    new Checkpointer[F, C] {
+      override def checkpoint(c: C): F[Unit] = f(c)
+      override def empty: C = Monoid[C].empty
+      override def combine(x: C, y: C): C = Monoid[C].combine(x, y)
+    }
+
+}

@@ -48,7 +48,7 @@ object ConfigParser {
       }
 
   private def readTextFrom[F[_]: Sync](path: Path): F[Either[String, String]] =
-    Sync[F].delay {
+    Sync[F].blocking {
       Either
         .catchNonFatal(Files.readAllLines(path).asScala.mkString("\n"))
         .leftMap(e => s"Error reading ${path.toAbsolutePath} file from filesystem: ${e.getMessage}")

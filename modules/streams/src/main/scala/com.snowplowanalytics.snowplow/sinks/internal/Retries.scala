@@ -8,6 +8,7 @@ import com.snowplowanalytics.snowplow.sinks.{Sink, Sinkable}
 
 import scala.concurrent.duration.FiniteDuration
 
+/** This might be not-needed.  Most sinks already have retries built in to the underlying client */
 object Retries {
 
   def sink[F[_]: Async: Logger](maxRetries: Int, baseDelay: FiniteDuration)(f: List[Sinkable] => F[Unit]): Sink[F] = {

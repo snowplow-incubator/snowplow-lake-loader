@@ -1,11 +1,10 @@
-package com.snowplowanalytics.snowplow.lakes
+package com.snowplowanalytics.snowplow.lakes.processing
 
 import cats.implicits._
 import cats.data.{NonEmptyList, Validated, ValidatedNel}
 import io.circe.Json
 
 import org.apache.spark.sql.Row
-import org.apache.spark.sql.types._
 
 import com.snowplowanalytics.iglu.schemaddl.parquet.Field
 import com.snowplowanalytics.snowplow.badrows.{BadRow, Failure => BadRowFailure, FailureDetails, Processor => BadRowProcessor}
@@ -14,17 +13,28 @@ import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
 import com.snowplowanalytics.iglu.schemaddl.parquet.{CastError, FieldValue}
 import com.snowplowanalytics.iglu.core.{SchemaKey, SelfDescribingData}
 
-object Transform {
+private[processing] object Transform {
 
-  case class RowsWithSchema(rows: List[Row], schema: StructType)
-
+  /**
+   * Transform a Snowplow Event to a Spark Row
+   *
+   * @param processor
+   *   Details about this loader, only used for generating a bad row
+   * @param event
+   *   The Snowplow Event received from the stream
+   * @param batchInfo
+   *   Pre-calculated Iglu types for a batch of events, used to guide the transformation
+   * @return
+   *   A Spark Row if iglu schemas were successfully resolved for this event, and the event's
+   *   entities can be cast to the schema-ddl types. Otherwise a bad row.
+   */
   def eventToRow(
     processor: BadRowProcessor,
     event: Event,
-    entities: NonAtomicFields
+    batchInfo: NonAtomicFields
   ): Either[BadRow, Row] =
-    failForResolverErrors(processor, event, entities.igluFailures).flatMap { _ =>
-      (forAtomic(event), forEntities(event, entities.fields))
+    failForResolverErrors(processor, event, batchInfo.igluFailures).flatMap { _ =>
+      (forAtomic(event), forEntities(event, batchInfo.fields))
         .mapN { case (atomic, nonAtomic) =>
           buildRow(atomic ::: nonAtomic)
         }
@@ -39,18 +49,18 @@ object Transform {
     event: Event,
     failures: List[NonAtomicFields.ColumnFailure]
   ): Either[BadRow, Unit] = {
-    val schemaFailures = failures.flatMap { case NonAtomicFields.ColumnFailure(entityType, matchingKeys, failure) =>
-      entityType match {
+    val schemaFailures = failures.flatMap { case NonAtomicFields.ColumnFailure(tabledEntity, versionsInBatch, failure) =>
+      tabledEntity.entityType match {
         case TabledEntity.UnstructEvent =>
           event.unstruct_event.data match {
-            case Some(SelfDescribingData(schemaKey, _)) if matchingKeys.contains(schemaKey) =>
+            case Some(SelfDescribingData(schemaKey, _)) if keyMatches(tabledEntity, versionsInBatch, schemaKey) =>
               Some(failure)
             case _ =>
               None
           }
         case TabledEntity.Context =>
           val allContexts = event.contexts.data ::: event.derived_contexts.data
-          if (allContexts.exists(context => matchingKeys.contains(context.schema)))
+          if (allContexts.exists(context => keyMatches(tabledEntity, versionsInBatch, context.schema)))
             Some(failure)
           else
             None
@@ -97,49 +107,54 @@ object Transform {
 
   private def forEntities(
     event: Event,
-    entities: List[NonAtomicFields.ColumnGroup]
+    entities: List[TypedTabledEntity]
   ): ValidatedNel[FailureDetails.LoaderIgluError, List[FieldValue]] =
-    entities.flatMap { case NonAtomicFields.ColumnGroup(entity, field, matchingKeys, recoveries) =>
-      val head = forEntity(entity, field, matchingKeys, event)
-      val tail = recoveries.toList.map { case (recoveryKey, recoveryField) =>
-        forEntity(entity, recoveryField, Set(recoveryKey), event)
+    entities.flatMap { case TypedTabledEntity(entity, field, subVersions, recoveries) =>
+      val head = forEntity(entity, field, subVersions, event)
+      val tail = recoveries.toList.map { case (recoveryVersion, recoveryField) =>
+        forEntity(entity, recoveryField, Set(recoveryVersion), event)
       }
       head :: tail
     }.sequence
 
   private def forEntity(
-    entity: TabledEntity.EntityType,
+    te: TabledEntity,
     field: Field,
-    keySet: Set[SchemaKey],
+    subVersions: Set[SchemaSubVersion],
     event: Event
   ): ValidatedNel[FailureDetails.LoaderIgluError, FieldValue] = {
-    val result = entity match {
-      case TabledEntity.UnstructEvent => forUnstruct(field, keySet, event)
-      case TabledEntity.Context => forContexts(field, keySet, event)
+    val result = te.entityType match {
+      case TabledEntity.UnstructEvent => forUnstruct(te, field, subVersions, event)
+      case TabledEntity.Context => forContexts(te, field, subVersions, event)
     }
-    result.leftMap(castErrorToLoaderIgluError(keySet.max, _))
+    result.leftMap { failure =>
+      val schemaKey = TabledEntity.toSchemaKey(te, subVersions.max)
+      castErrorToLoaderIgluError(schemaKey, failure)
+    }
   }
 
   private def forUnstruct(
+    te: TabledEntity,
     field: Field,
-    keySet: Set[SchemaKey],
+    subVersions: Set[SchemaSubVersion],
     event: Event
   ): ValidatedNel[CastError, FieldValue] =
     event.unstruct_event.data match {
-      case Some(SelfDescribingData(schemaKey, unstructData)) if keySet.contains(schemaKey) =>
+      case Some(SelfDescribingData(schemaKey, unstructData)) if keyMatches(te, subVersions, schemaKey) =>
         FieldValue.cast(field)(unstructData)
       case _ =>
         Validated.Valid(FieldValue.NullValue)
     }
 
   private def forContexts(
+    te: TabledEntity,
     field: Field,
-    keySet: Set[SchemaKey],
+    subVersions: Set[SchemaSubVersion],
     event: Event
   ): ValidatedNel[CastError, FieldValue] = {
     val allContexts = event.contexts.data ::: event.derived_contexts.data
     val matchingContexts = allContexts
-      .filter(context => keySet.contains(context.schema))
+      .filter(context => keyMatches(te, subVersions, context.schema))
 
     if (matchingContexts.nonEmpty) {
       val jsonArrayWithContexts = Json.fromValues(matchingContexts.map(_.data).toVector)
@@ -148,6 +163,18 @@ object Transform {
       Validated.Valid(FieldValue.NullValue)
     }
   }
+
+  private def keyMatches(
+    te: TabledEntity,
+    subVersions: Set[SchemaSubVersion],
+    schemaKey: SchemaKey
+  ): Boolean =
+    (schemaKey.vendor === te.vendor) &&
+      (schemaKey.name === te.schemaName) &&
+      (schemaKey.version.model === te.model) &&
+      subVersions.exists { case (revision, addition) =>
+        schemaKey.version.revision === revision && schemaKey.version.addition === addition
+      }
 
   private def castErrorToLoaderIgluError(
     schemaKey: SchemaKey,

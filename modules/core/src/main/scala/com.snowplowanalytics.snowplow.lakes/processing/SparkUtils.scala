@@ -1,5 +1,6 @@
-package com.snowplowanalytics.snowplow.lakes
+package com.snowplowanalytics.snowplow.lakes.processing
 
+import cats.data.NonEmptyList
 import cats.effect.Sync
 import cats.effect.kernel.Resource
 import cats.implicits._
@@ -11,14 +12,14 @@ import org.apache.spark.sql.functions.current_timestamp
 import org.apache.spark.sql.types.StructType
 import io.delta.tables.DeltaTable
 
+import com.snowplowanalytics.snowplow.lakes.Config
+
 import java.util.UUID
 import scala.jdk.CollectionConverters._
 
-object SparkUtils {
+private[processing] object SparkUtils {
 
   private implicit def logger[F[_]: Sync] = Slf4jLogger.getLogger[F]
-
-  case class DataFrameOnDisk(viewName: String, count: Int)
 
   def session[F[_]: Sync](config: Config.Spark, target: Config.Target): Resource[F, SparkSession] = {
     val builder =
@@ -71,14 +72,14 @@ object SparkUtils {
       case iceberg: Config.Iceberg => createIceberg(spark, iceberg)
     }
 
-  def createDelta[F[_]: Sync](spark: SparkSession, target: Config.Delta): F[Unit] = {
+  private def createDelta[F[_]: Sync](spark: SparkSession, target: Config.Delta): F[Unit] = {
     val builder = DeltaTable
       .createIfNotExists(spark)
       .partitionedBy("load_tstamp_date", "event_name")
       .location(target.location.toString)
       .tableName("events_internal_id") // The name does not matter
 
-    AtomicFields.sparkFieldsWithLoadTstamp.foreach(builder.addColumn(_))
+    SparkSchema.atomicPlusTimestamps.foreach(builder.addColumn(_))
 
     // This column needs special treatment because of the `generatedAlwaysAs` clause
     builder.addColumn {
@@ -94,13 +95,13 @@ object SparkUtils {
       Sync[F].blocking(builder.execute()).void
   }
 
-  def createIceberg[F[_]: Sync](spark: SparkSession, target: Config.Iceberg): F[Unit] = {
+  private def createIceberg[F[_]: Sync](spark: SparkSession, target: Config.Iceberg): F[Unit] = {
     val name = qualifiedNameForIceberg(target)
     Logger[F].info(s"Creating Iceberg table $name if it does not already exist...") >>
       Sync[F].blocking {
         spark.sql(s"""
       CREATE TABLE IF NOT EXISTS $name
-      (${AtomicFields.sparkDDL})
+      (${SparkSchema.ddlForTableCreate})
       USING ICEBERG
       PARTITIONED BY (date(load_tstamp), event_name)
       LOCATION ${target.location}
@@ -111,47 +112,39 @@ object SparkUtils {
 
   def saveDataFrameToDisk[F[_]: Sync](
     spark: SparkSession,
-    rows: List[Row],
+    rows: NonEmptyList[Row],
     schema: StructType
-  ): F[Option[DataFrameOnDisk]] = {
+  ): F[DataFrameOnDisk] = {
     val count = rows.size
-    if (count > 0) {
-      for {
-        viewName <- Sync[F].delay(UUID.randomUUID.toString.replaceAll("-", ""))
-        _ <- Logger[F].info(s"Saving batch of $count events to local disk")
-        _ <- Sync[F].blocking {
-               spark
-                 .createDataFrame(rows.asJava, schema)
-                 .localCheckpoint()
-                 .createTempView(viewName)
-             }
-      } yield Some(DataFrameOnDisk(viewName, count))
-    } else {
-      Logger[F].info(s"An in-memory batch yielded zero good events.  Nothing will be saved to local disk.").as(None)
-    }
+    for {
+      viewName <- Sync[F].delay(UUID.randomUUID.toString.replaceAll("-", ""))
+      _ <- Logger[F].info(s"Saving batch of $count events to local disk")
+      _ <- Sync[F].blocking {
+             spark
+               .createDataFrame(rows.toList.asJava, schema)
+               .localCheckpoint()
+               .createTempView(viewName)
+           }
+    } yield DataFrameOnDisk(viewName, count)
   }
 
-  def sink[F[_]: Sync](
+  def commit[F[_]: Sync](
     spark: SparkSession,
     target: Config.Target,
-    dataFramesOnDisk: List[DataFrameOnDisk],
+    dataFramesOnDisk: NonEmptyList[DataFrameOnDisk],
     nonAtomicFieldNames: Set[String]
   ): F[Unit] = {
-    val totalCount = dataFramesOnDisk.map(_.count).sum
-    if (totalCount > 0) {
-      val df = dataFramesOnDisk
-        .map(onDisk => spark.table(onDisk.viewName))
-        .reduce(_.unionByName(_, allowMissingColumns = true))
-        .hint("rebalance")
-        .withColumn("load_tstamp", current_timestamp())
+    val totalCount = dataFramesOnDisk.toList.map(_.count).sum
+    val df = dataFramesOnDisk.toList
+      .map(onDisk => spark.table(onDisk.viewName))
+      .reduce(_.unionByName(_, allowMissingColumns = true))
+      .hint("rebalance")
+      .withColumn("load_tstamp", current_timestamp())
 
-      Logger[F].info(s"Ready to Write and commit $totalCount events to the lake.") >>
-        Logger[F].info(s"Non atomic columns: [${nonAtomicFieldNames.toSeq.sorted.mkString(",")}]") >>
-        sinkForTarget(target, df) >>
-        Logger[F].info(s"Finished writing and committing $totalCount events to the lake.")
-    } else {
-      Logger[F].info("A window yielded zero good events.  Nothing will be written into the lake.")
-    }
+    Logger[F].info(s"Ready to Write and commit $totalCount events to the lake.") >>
+      Logger[F].info(s"Non atomic columns: [${nonAtomicFieldNames.toSeq.sorted.mkString(",")}]") >>
+      sinkForTarget(target, df) >>
+      Logger[F].info(s"Finished writing and committing $totalCount events to the lake.")
   }
 
   private def sinkForTarget[F[_]: Sync](target: Config.Target, df: DataFrame): F[Unit] =

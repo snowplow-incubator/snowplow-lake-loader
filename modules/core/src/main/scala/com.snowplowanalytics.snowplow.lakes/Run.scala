@@ -11,6 +11,7 @@ import com.monovore.decline.Opts
 import com.snowplowanalytics.snowplow.sources.SourceAndAck
 import com.snowplowanalytics.snowplow.sinks.Sink
 import com.snowplowanalytics.snowplow.badrows.{Processor => BadRowProcessor}
+import com.snowplowanalytics.snowplow.lakes.processing.Processing
 
 import java.nio.file.Path
 
@@ -54,7 +55,7 @@ object Run {
     config: Config.WithIglu[SourceConfig, SinkConfig]
   ): F[ExitCode] =
     Environment.fromConfig(config, processor, toSource, toBadSink).use { env =>
-      Processing.stream(config.main, env).compile.drain.as(ExitCode.Success)
+      Processing.stream(env).compile.drain.as(ExitCode.Success)
     }
 
   def prettyLogException[F[_]: Sync](e: Throwable): F[Unit] = {

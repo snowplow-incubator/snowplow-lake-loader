@@ -31,7 +31,7 @@ lazy val kafka: Project = project
 
 lazy val core: Project = project
   .in(file("modules/core"))
-  .settings(BuildSettings.commonSettings)
+  .settings(BuildSettings.commonSettings ++ BuildSettings.logSettings)
   .settings(libraryDependencies ++= Dependencies.coreDependencies)
   .dependsOn(streams)
 

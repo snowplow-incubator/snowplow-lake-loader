@@ -30,13 +30,16 @@ object BuildSettings {
     scalacOptions += "-Ywarn-macros:after"
   )
 
+  lazy val logSettings = Seq(
+    excludeDependencies ++= Seq(
+      ExclusionRule("org.apache.logging.log4j", "log4j-slf4j2-impl")
+    )
+  )
+
   lazy val appSettings = Seq(
       buildInfoKeys := Seq[BuildInfoKey](dockerAlias, name, version),
-      buildInfoPackage := "com.snowplowanalytics.snowplow.lakes",
-      excludeDependencies ++= Seq(
-        ExclusionRule("org.apache.logging.log4j", "log4j-slf4j2-impl")
-      )
-    )
+      buildInfoPackage := "com.snowplowanalytics.snowplow.lakes"
+    ) ++ logSettings
 
   lazy val azureSettings = Seq(
     name := "lake-loader-azure",

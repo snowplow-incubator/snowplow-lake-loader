@@ -1,6 +1,5 @@
-package com.snowplowanalytics.snowplow.lakes
+package com.snowplowanalytics.snowplow.lakes.processing
 
-import cats.Order
 import cats.data.{EitherT, NonEmptyList}
 import cats.effect.Sync
 import cats.implicits._
@@ -12,15 +11,9 @@ import com.snowplowanalytics.iglu.schemaddl.jsonschema.Schema
 import com.snowplowanalytics.iglu.schemaddl.jsonschema.circe.implicits.toSchema
 import com.snowplowanalytics.snowplow.badrows.FailureDetails
 
-import scala.math.Ordered.orderingToOrdered
+import scala.math.Ordered._
 
-object SchemaProvider {
-
-  final case class SchemaWithKey(schemaKey: SchemaKey, schema: Schema)
-
-  object SchemaWithKey {
-    implicit def catsOrder: Order[SchemaWithKey] = Order.fromOrdering(Ordering.by(_.schemaKey))
-  }
+private[processing] object SchemaProvider {
 
   private def getSchema[F[_]: Sync: RegistryLookup](
     resolver: Resolver[F],

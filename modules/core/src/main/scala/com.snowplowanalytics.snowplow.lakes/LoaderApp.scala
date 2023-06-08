@@ -9,7 +9,7 @@ import com.snowplowanalytics.snowplow.sources.SourceAndAck
 import com.snowplowanalytics.snowplow.sinks.Sink
 import com.snowplowanalytics.snowplow.badrows.{Processor => BadRowProcessor}
 
-abstract class LoaderApp[SourceConfig, SinkConfig](
+abstract class LoaderApp[SourceConfig: Decoder, SinkConfig: Decoder](
   name: String,
   dockerAlias: String,
   version: String
@@ -17,9 +17,6 @@ abstract class LoaderApp[SourceConfig, SinkConfig](
 
   type SinkProvider = SinkConfig => Resource[IO, Sink[IO]]
   type SourceProvider = SourceConfig => SourceAndAck[IO]
-
-  implicit def sourceDecoder: Decoder[SourceConfig]
-  implicit def sinkDecoder: Decoder[SinkConfig]
 
   def source: SourceProvider
   def badSink: SinkProvider

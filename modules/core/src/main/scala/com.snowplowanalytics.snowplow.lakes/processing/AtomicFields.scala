@@ -1,17 +1,20 @@
-package com.snowplowanalytics.snowplow.lakes
-
-import org.apache.spark.sql.types.{StructField => SparkStructField, StructType => SparkStructType, TimestampType => SparkTimestampType}
+package com.snowplowanalytics.snowplow.lakes.processing
 
 import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer}
 import com.snowplowanalytics.iglu.schemaddl.parquet.{Field, Type}
 import com.snowplowanalytics.iglu.schemaddl.parquet.Type.DecimalPrecision
 import com.snowplowanalytics.iglu.schemaddl.parquet.Type.Nullability.{Nullable, Required}
 
-object AtomicFields {
+private[processing] object AtomicFields {
   private val customDecimal = Type.Decimal(DecimalPrecision.Digits18, 2)
 
   val schemaKey: SchemaKey = SchemaKey("com.snowplowanalytics.snowplow", "atomic", "jsonschema", SchemaVer.Full(1, 0, 0))
 
+  /**
+   * Ordered schema-ddl Fields corresponding to the output from Enrich
+   *
+   * Does not include fields added by the loader, e.g. `load_tstamp`
+   */
   val static: List[Field] =
     List(
       Field("app_id", Type.String, Nullable),
@@ -143,12 +146,4 @@ object AtomicFields {
       Field("event_fingerprint", Type.String, Nullable),
       Field("true_tstamp", Type.Timestamp, Nullable)
     )
-
-  // This is a val so we cache the result and use it again on each window
-  val sparkFields: List[SparkStructField] = static.map(SparkSchema.asSparkField)
-
-  def sparkFieldsWithLoadTstamp: List[SparkStructField] =
-    sparkFields :+ SparkStructField("load_tstamp", SparkTimestampType, nullable = false)
-
-  def sparkDDL: String = SparkStructType(sparkFieldsWithLoadTstamp).toDDL
 }

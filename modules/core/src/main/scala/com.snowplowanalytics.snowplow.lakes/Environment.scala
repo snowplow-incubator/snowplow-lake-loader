@@ -6,12 +6,11 @@ import cats.effect.unsafe.implicits.global
 import org.http4s.client.Client
 import org.http4s.blaze.client.BlazeClientBuilder
 
-import org.apache.spark.sql.SparkSession
-
 import com.snowplowanalytics.iglu.client.resolver.Resolver
 import com.snowplowanalytics.snowplow.badrows.{Processor => BadRowProcessor}
-import com.snowplowanalytics.snowplow.sources.SourceAndAck
+import com.snowplowanalytics.snowplow.sources.{EventProcessingConfig, SourceAndAck}
 import com.snowplowanalytics.snowplow.sinks.Sink
+import com.snowplowanalytics.snowplow.lakes.processing.LakeWriter
 
 case class Environment[F[_]](
   processor: BadRowProcessor,
@@ -19,8 +18,9 @@ case class Environment[F[_]](
   badSink: Sink[F],
   resolver: Resolver[F],
   httpClient: Client[F],
-  spark: SparkSession,
-  inMemMaxBytes: Long // use the runtime api to pick something sensible
+  lakeWriter: LakeWriter[F],
+  inMemMaxBytes: Long, // use the runtime api to pick something sensible
+  windowing: EventProcessingConfig.TimedWindows
 )
 
 object Environment {
@@ -34,16 +34,18 @@ object Environment {
     for {
       resolver <- mkResolver[F](config.iglu)
       httpClient <- BlazeClientBuilder[F].withExecutionContext(global.compute).resource
-      spark <- SparkUtils.session(config.main.spark, config.main.output.good)
       badSink <- sink(config.main.output.bad)
+      windowing <- Resource.eval(EventProcessingConfig.TimedWindows.build(config.main.windows))
+      lakeWriter <- LakeWriter.build[F](config.main.spark, config.main.output.good)
     } yield Environment(
       processor = processor,
       source = source(config.main.input),
       badSink = badSink,
       resolver = resolver,
       httpClient = httpClient,
-      spark = spark,
-      inMemMaxBytes = chooseInMemMaxBytes(config.main)
+      lakeWriter = lakeWriter,
+      inMemMaxBytes = chooseInMemMaxBytes(config.main),
+      windowing = windowing
     )
 
   private def mkResolver[F[_]: Async](resolverConfig: Resolver.ResolverConfig): Resource[F, Resolver[F]] =
