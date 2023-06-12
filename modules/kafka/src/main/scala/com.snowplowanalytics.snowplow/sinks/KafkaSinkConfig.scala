@@ -6,7 +6,7 @@ import io.circe.generic.semiauto._
 case class KafkaSinkConfig(
   topicName: String,
   bootstrapServers: String,
-  maxRetries: Int
+  producerConf: Map[String, String]
 )
 
 object KafkaSinkConfig {

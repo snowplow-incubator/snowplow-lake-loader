@@ -9,7 +9,7 @@ import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 
 // kafka
-import fs2.kafka.{AutoOffsetReset, CommittableConsumerRecord, ConsumerSettings, KafkaConsumer}
+import fs2.kafka.{CommittableConsumerRecord, ConsumerSettings, KafkaConsumer}
 import org.apache.kafka.common.TopicPartition
 
 // snowplow
@@ -107,13 +107,10 @@ object KafkaSource {
   private def consumerSettings[F[_]: Async](config: KafkaSourceConfig): ConsumerSettings[F, Array[Byte], Array[Byte]] =
     ConsumerSettings[F, Array[Byte], Array[Byte]]
       .withBootstrapServers(config.bootstrapServers)
-      .withGroupId(config.groupId)
+      .withProperties(config.consumerConf)
       .withEnableAutoCommit(false)
-      .withAllowAutoCreateTopics(false)
-      .withAutoOffsetReset(AutoOffsetReset.Earliest)
       .withProperties(
         ("key.deserializer", "org.apache.kafka.common.serialization.ByteArrayDeserializer"),
         ("value.deserializer", "org.apache.kafka.common.serialization.ByteArrayDeserializer")
       )
-
 }

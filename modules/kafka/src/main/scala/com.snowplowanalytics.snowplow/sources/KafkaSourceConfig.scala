@@ -6,7 +6,7 @@ import io.circe.generic.semiauto._
 case class KafkaSourceConfig(
   topicName: String,
   bootstrapServers: String,
-  groupId: String
+  consumerConf: Map[String, String]
 )
 
 object KafkaSourceConfig {

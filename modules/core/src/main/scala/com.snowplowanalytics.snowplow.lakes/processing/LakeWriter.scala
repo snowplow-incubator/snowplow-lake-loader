@@ -1,7 +1,7 @@
 package com.snowplowanalytics.snowplow.lakes.processing
 
 import cats.data.NonEmptyList
-import cats.effect.Sync
+import cats.effect.Async
 import cats.effect.kernel.Resource
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.types.StructType
@@ -21,7 +21,7 @@ trait LakeWriter[F[_]] {
 
 object LakeWriter {
 
-  def build[F[_]: Sync](config: Config.Spark, target: Config.Target): Resource[F, LakeWriter[F]] =
+  def build[F[_]: Async](config: Config.Spark, target: Config.Target): Resource[F, LakeWriter[F]] =
     for {
       spark <- SparkUtils.session[F](config, target)
     } yield new LakeWriter[F] {

@@ -15,7 +15,7 @@ object KafkaSink {
     val producerSettings =
       ProducerSettings[F, String, Array[Byte]]
         .withBootstrapServers(config.bootstrapServers)
-        .withRetries(config.maxRetries)
+        .withProperties(config.producerConf)
         .withProperties(
           ("key.serializer", "org.apache.kafka.common.serialization.StringSerializer"),
           ("value.serializer", "org.apache.kafka.common.serialization.ByteArraySerializer")

@@ -1,7 +1,7 @@
 package com.snowplowanalytics.snowplow.lakes.processing
 
 import cats.data.NonEmptyList
-import cats.effect.Sync
+import cats.effect.{Async, Sync}
 import cats.effect.kernel.Resource
 import cats.implicits._
 import org.typelevel.log4cats.Logger
@@ -10,6 +10,8 @@ import org.typelevel.log4cats.slf4j.Slf4jLogger
 import org.apache.spark.sql.{DataFrame, Row, SparkSession}
 import org.apache.spark.sql.functions.current_timestamp
 import org.apache.spark.sql.types.StructType
+import org.apache.spark.SnowplowOverrideShutdownHook
+import org.apache.spark.sql.delta.DeltaAnalysisException
 import io.delta.tables.DeltaTable
 
 import com.snowplowanalytics.snowplow.lakes.Config
@@ -21,7 +23,7 @@ private[processing] object SparkUtils {
 
   private implicit def logger[F[_]: Sync] = Slf4jLogger.getLogger[F]
 
-  def session[F[_]: Sync](config: Config.Spark, target: Config.Target): Resource[F, SparkSession] = {
+  def session[F[_]: Async](config: Config.Spark, target: Config.Target): Resource[F, SparkSession] = {
     val builder =
       SparkSession
         .builder()
@@ -35,7 +37,9 @@ private[processing] object SparkUtils {
     val closeLogF = Logger[F].info("Closing the global spark session...")
     val buildF = Sync[F].delay(builder.getOrCreate())
 
-    Resource.make(openLogF >> buildF)(s => closeLogF >> Sync[F].blocking(s.close()))
+    Resource
+      .make(openLogF >> buildF)(s => closeLogF >> Sync[F].blocking(s.close())) <* 
+        SnowplowOverrideShutdownHook.resource[F]
   }
 
   private def configureSparkForTarget(builder: SparkSession.Builder, target: Config.Target): Unit =
@@ -89,7 +93,14 @@ private[processing] object SparkUtils {
     }: Unit
 
     Logger[F].info(s"Creating Delta table ${target.location} if it does not already exist...") >>
-      Sync[F].blocking(builder.execute()).void
+      Sync[F]
+        .blocking(builder.execute())
+        .void
+        .recoverWith {
+          case e: DeltaAnalysisException if e.errorClass === Some("DELTA_CREATE_TABLE_SCHEME_MISMATCH") =>
+            // Expected when table exists and contains some unstruct_event or context columns
+            Logger[F].debug(s"Caught and ignored DeltaAnalysisException")
+        }
   }
 
   private def createIceberg[F[_]: Sync](spark: SparkSession, target: Config.Iceberg): F[Unit] = {
