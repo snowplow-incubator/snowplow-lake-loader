@@ -26,10 +26,7 @@ private[processing] object SparkUtils {
       SparkSession
         .builder()
         .appName("snowplow-lake-loader")
-        .master(s"local[${config.threads}, ${config.retries}]")
-        .config("spark.sql.adaptive.advisoryPartitionSizeInBytes", s"${config.targetParquetSizeMB}MB")
-        .config("spark.local.dir", config.localDir)
-        .config("spark.ui.enabled", false)
+        .master(s"local[*, ${config.taskRetries}]")
 
     configureSparkForTarget(builder, target)
     configureSparkWithExtras(builder, config.conf)
@@ -122,7 +119,8 @@ private[processing] object SparkUtils {
       _ <- Sync[F].blocking {
              spark
                .createDataFrame(rows.toList.asJava, schema)
-               .localCheckpoint()
+               .coalesce(1)
+               .localCheckpoint() // REMOVE this line to use memory instead of disk
                .createTempView(viewName)
            }
     } yield DataFrameOnDisk(viewName, count)
@@ -138,7 +136,7 @@ private[processing] object SparkUtils {
     val df = dataFramesOnDisk.toList
       .map(onDisk => spark.table(onDisk.viewName))
       .reduce(_.unionByName(_, allowMissingColumns = true))
-      .hint("rebalance")
+      .coalesce(1)
       .withColumn("load_tstamp", current_timestamp())
 
     Logger[F].info(s"Ready to Write and commit $totalCount events to the lake.") >>

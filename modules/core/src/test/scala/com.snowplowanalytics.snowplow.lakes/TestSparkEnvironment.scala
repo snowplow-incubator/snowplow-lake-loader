@@ -23,7 +23,7 @@ object TestSparkEnvironment {
 
   def build(windows: List[List[TokenedEvents]]): Resource[IO, TestSparkEnvironment] = for {
     tmpDir <- Resource.eval(IO.blocking(Files.createTempDirectory("lake-loader")))
-    lakeWriter <- LakeWriter.build[IO](testSparkConfig(tmpDir), targetConfig(tmpDir))
+    lakeWriter <- LakeWriter.build[IO](TestConfig.defaults.spark, targetConfig(tmpDir))
   } yield {
     val env = Environment(
       processor = BadRowProcessor("lake-loader-test", "0.0.0"),
@@ -53,14 +53,6 @@ object TestSparkEnvironment {
   private def testHttpClient: Client[IO] = Client[IO] { _ =>
     Resource.raiseError[IO, Nothing, Throwable](new RuntimeException("http failure"))
   }
-
-  private def testSparkConfig(tmp: Path) = Config.Spark(
-    localDir = tmp.resolve("local").toString,
-    retries = 1,
-    targetParquetSizeMB = 1000,
-    threads = 1,
-    conf = Map.empty
-  )
 
   private def targetConfig(tmp: Path) = Config.Delta(tmp.resolve("events").toUri)
 

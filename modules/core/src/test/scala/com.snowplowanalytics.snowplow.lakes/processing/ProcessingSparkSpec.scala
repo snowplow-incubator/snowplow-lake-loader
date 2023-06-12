@@ -52,13 +52,16 @@ class ProcessingSparkSpec extends Specification with CatsEffect {
 
           val inputEventIds = inputEvents.flatten.map(_.event_id.toString)
           val outputEventIds = df.select("event_id").as[String].collect().toSeq
+          val loadTstamps = df.select("load_tstamp").as[java.sql.Timestamp].collect().toSeq
 
-          val m1: MatchResult[Any] = cols must contain("event_id")
-          val m2: MatchResult[Any] = cols must contain("load_tstamp")
-          val m3: MatchResult[Any] = df.count() must beEqualTo(4L)
-          val m4: MatchResult[Any] = outputEventIds.toSeq must containTheSameElementsAs(inputEventIds)
-
-          m1 and m2 and m3 and m4
+          List[MatchResult[Any]](
+            cols must contain("event_id"),
+            cols must contain("load_tstamp"),
+            df.count() must beEqualTo(4L),
+            outputEventIds.toSeq must containTheSameElementsAs(inputEventIds),
+            loadTstamps.toSet must haveSize(1), // single timestamp for entire window
+            loadTstamps.head must not beNull
+          ).reduce(_ and _)
         }
       }
     }

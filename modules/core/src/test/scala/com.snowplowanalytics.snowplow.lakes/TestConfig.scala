@@ -1,25 +1,26 @@
 package com.snowplowanalytics.snowplow.lakes
 
-import java.nio.file.Path
-import scala.concurrent.duration.DurationInt
+import com.typesafe.config.ConfigFactory
+import cats.implicits._
+import io.circe.config.syntax._
 
 object TestConfig {
 
-  def ofLocalDirectory(tmp: Path): Config[Unit, Unit] = Config(
-    input = (),
-    output = Config.Output(target(tmp), ()),
-    inMemHeapFraction = 0.0,
-    windows = 5.minutes,
-    spark = sparkConfig(tmp)
-  )
+  /** Provides an app Config using defaults provided by our standard reference.conf */
+  def defaults: AnyConfig =
+    ConfigFactory
+      .load(fallbacks)
+      .as[Config[Option[Unit], Option[Unit]]] match {
+      case Right(ok) => ok
+      case Left(e) => throw new RuntimeException("Could not load default config for testing", e)
+    }
 
-  private def sparkConfig(tmp: Path) = Config.Spark(
-    localDir = tmp.resolve("local").toString,
-    retries = 1,
-    targetParquetSizeMB = 1000,
-    threads = 1,
-    conf = Map.empty
-  )
-
-  private def target(tmp: Path) = Config.Delta(tmp.resolve("events").toUri)
+  private def fallbacks = ConfigFactory.parseString("""
+    output: {
+      good: {
+        type: Delta
+        location: "file:///tmp/lake-loader-test/events"
+      }
+    }
+  """)
 }

@@ -43,10 +43,7 @@ object Config {
   ) extends Iceberg
 
   case class Spark(
-    localDir: String,
-    retries: Int,
-    targetParquetSizeMB: Int,
-    threads: Int,
+    taskRetries: Int,
     conf: Map[String, String]
   )
 
