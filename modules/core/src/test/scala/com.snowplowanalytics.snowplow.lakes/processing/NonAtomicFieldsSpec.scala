@@ -62,6 +62,7 @@ class NonAtomicFieldsSpec extends Specification with CatsEffect {
 
     val expectedStruct = Type.Struct(
       List(
+        Field("_schema_version", Type.String, Required),
         Field("col_a", Type.String, Required),
         Field("col_c", Type.String, Nullable),
         Field("col_b", Type.String, Nullable)

@@ -1,5 +1,6 @@
 package com.snowplowanalytics.snowplow.lakes.processing
 
+import cats.implicits._
 import cats.data.NonEmptyList
 
 import com.snowplowanalytics.iglu.schemaddl.parquet.{Field, Migrations, Type}
@@ -84,15 +85,36 @@ private[processing] object TypedTabledEntity {
     }
     val fieldName = SnowplowEvent.transformSchema(sdkEntityType, tabledEntity.vendor, tabledEntity.schemaName, tabledEntity.model)
 
-    Field.normalize {
-      tabledEntity.entityType match {
-        case TabledEntity.UnstructEvent =>
+    tabledEntity.entityType match {
+      case TabledEntity.UnstructEvent =>
+        Field.normalize {
           Field.build(fieldName, schema, enforceValuePresence = false)
-        case TabledEntity.Context =>
-          Field.buildRepeated(fieldName, schema, enforceItemPresence = true, Type.Nullability.Nullable)
-      }
+        }
+      case TabledEntity.Context =>
+        // Must normalize first and add the schema key field after. To avoid unlikely weird issues
+        // with similar existing keys.
+        addSchemaVersionKey {
+          Field.normalize {
+            Field.buildRepeated(fieldName, schema, enforceItemPresence = true, Type.Nullability.Nullable)
+          }
+        }
     }
   }
 
   private def keyToSubVersion(key: SchemaKey): SchemaSubVersion = (key.version.revision, key.version.addition)
+
+  private def addSchemaVersionKey(field: Field): Field = {
+    val fieldType = field.fieldType match {
+      case arr @ Type.Array(struct @ Type.Struct(subFields), _) =>
+        val fixedFields = subFields
+          .filter(_.name =!= "_schema_version") // Our special key takes priority over a key of the same name in the schema
+          .prepended(Field("_schema_version", Type.String, Type.Nullability.Required))
+        arr.copy(element = struct.copy(fields = fixedFields))
+      case other =>
+        // This is OK. It must be a weird schema, whose root type is not an object.
+        // Unlikely but allowed according to our rules.
+        other
+    }
+    field.copy(fieldType = fieldType)
+  }
 }

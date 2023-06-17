@@ -157,7 +157,7 @@ private[processing] object Transform {
       .filter(context => keyMatches(te, subVersions, context.schema))
 
     if (matchingContexts.nonEmpty) {
-      val jsonArrayWithContexts = Json.fromValues(matchingContexts.map(_.data).toVector)
+      val jsonArrayWithContexts = Json.fromValues(matchingContexts.map(jsonForContext).toVector)
       FieldValue.cast(field)(jsonArrayWithContexts)
     } else {
       Validated.Valid(FieldValue.NullValue)
@@ -183,6 +183,12 @@ private[processing] object Transform {
     castErrors.map {
       case CastError.WrongType(v, e) => FailureDetails.LoaderIgluError.WrongType(schemaKey, v, e.toString)
       case CastError.MissingInValue(k, v) => FailureDetails.LoaderIgluError.MissingInValue(schemaKey, k, v)
+    }
+
+  private def jsonForContext(sdd: SelfDescribingData[Json]): Json =
+    sdd.data.mapObject { obj =>
+      // Our special key takes priority over a key of the same name in the object
+      obj.add("_schema_version", Json.fromString(sdd.schema.version.asString))
     }
 
 }
