@@ -4,7 +4,7 @@ import cats.Monad
 import cats.implicits._
 import cats.effect.std.{MapRef, Queue}
 import cats.effect.kernel.Unique
-import cats.effect.{Async, Concurrent, Sync}
+import cats.effect.{Async, Sync}
 import fs2.{Pipe, Pull, Stream}
 import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
@@ -55,7 +55,8 @@ private[sources] object LowLevelSource {
         Stream.eval(MapRef.ofSingleImmutableMap[F, Unique.Token, C]()).flatMap { ref =>
           s2.through(tokened(ref))
             .through(windowed(config.windowing))
-            .through(eagerWindows(CleanCancellation(messageSink(processor, ref, source.checkpointer))))
+            .map(CleanCancellation(messageSink(processor, ref, source.checkpointer)))
+            .parJoin(2) // so we start processing the next window while the previous window is still finishing up.
         }
       }
   }
@@ -114,10 +115,6 @@ private[sources] object LowLevelSource {
           }
       }
       .drain
-
-  private def eagerWindows[F[_]: Concurrent, A](sink: Pipe[F, A, Nothing]): Pipe[F, Stream[F, A], Nothing] =
-    _.map(sink).prefetch // This prefetch means we start processing the next window while the previous window is still finishing up.
-      .flatten.drain
 
   private def windowed[F[_]: Async, A](config: EventProcessingConfig.Windowing): Pipe[F, A, Stream[F, A]] =
     config match {

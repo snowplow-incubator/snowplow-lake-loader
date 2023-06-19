@@ -38,8 +38,8 @@ private[processing] object SparkUtils {
     val buildF = Sync[F].delay(builder.getOrCreate())
 
     Resource
-      .make(openLogF >> buildF)(s => closeLogF >> Sync[F].blocking(s.close())) <* 
-        SnowplowOverrideShutdownHook.resource[F]
+      .make(openLogF >> buildF)(s => closeLogF >> Sync[F].blocking(s.close())) <*
+      SnowplowOverrideShutdownHook.resource[F]
   }
 
   private def configureSparkForTarget(builder: SparkSession.Builder, target: Config.Target): Unit =

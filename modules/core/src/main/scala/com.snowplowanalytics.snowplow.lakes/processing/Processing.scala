@@ -47,7 +47,7 @@ object Processing {
 
   private case class BatchWithTypes(events: List[Event], entities: NonAtomicFields)
 
-  private def eventProcessor[F[_]: Sync: RegistryLookup](
+  private def eventProcessor[F[_]: Async: RegistryLookup](
     env: Environment[F]
   ): EventProcessor[F] = { in =>
     val resources = for {
@@ -68,16 +68,21 @@ object Processing {
         Monad[F].unit
     }
 
-  private def processBatch[F[_]: Sync: RegistryLookup](
+  private def processBatch[F[_]: Async: RegistryLookup](
     env: Environment[F],
     ref: Ref[F, WindowState]
   ): Pipe[F, TokenedEvents, Nothing] =
     _.through(rememberTokens(ref))
+      .evalTap(_ => Async[F].cede)
       .through(parseBytes(env.processor))
+      .evalTap(_ => Async[F].cede)
       .through(sendFailedEvents(env.badSink))
+      .evalTap(_ => Async[F].cede)
       .through(batchUp(env.inMemMaxBytes))
+      .evalTap(_ => Async[F].cede)
       // We have now received a full batch of events ready for sinking to local disk
       .through(resolveTypes(env.resolver))
+      .evalTap(_ => Async[F].cede)
       .through(rememberColumnNames(ref))
       .through(transformToSpark(env.processor))
       .through(sendFailedEvents(env.badSink))
