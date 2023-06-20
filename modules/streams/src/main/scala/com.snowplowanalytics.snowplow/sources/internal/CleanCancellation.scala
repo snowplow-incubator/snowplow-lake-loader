@@ -51,14 +51,13 @@ object CleanCancellation {
         case ExitCase.Canceled =>
           // SIGINT received. We wait for the transformed events already in the queue to get sunk and checkpointed
           terminateStream(queue, sig)
-        case ExitCase.Errored(e) =>
+        case ExitCase.Errored(_) =>
           // Runtime exception either in the source or in the sink.
           // The exception is already logged by the concurrent process.
           // We wait for the transformed events already in the queue to get sunk and checkpointed.
-          // We then raise the original exception
           terminateStream(queue, sig).handleErrorWith { e2 =>
             Logger[F].error(e2)("Error when terminating the sink and checkpoint")
-          } *> Sync[F].raiseError[Unit](e)
+          }
       }
       .drain
       .concurrently {

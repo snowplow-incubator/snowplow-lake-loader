@@ -73,16 +73,11 @@ object Processing {
     ref: Ref[F, WindowState]
   ): Pipe[F, TokenedEvents, Nothing] =
     _.through(rememberTokens(ref))
-      .evalTap(_ => Async[F].cede)
       .through(parseBytes(env.processor))
-      .evalTap(_ => Async[F].cede)
       .through(sendFailedEvents(env.badSink))
-      .evalTap(_ => Async[F].cede)
       .through(batchUp(env.inMemMaxBytes))
-      .evalTap(_ => Async[F].cede)
       // We have now received a full batch of events ready for sinking to local disk
       .through(resolveTypes(env.resolver))
-      .evalTap(_ => Async[F].cede)
       .through(rememberColumnNames(ref))
       .through(transformToSpark(env.processor))
       .through(sendFailedEvents(env.badSink))
@@ -108,22 +103,28 @@ object Processing {
     }
 
   // This is a pure cpu-bound task. In future we might choose to make this parallel by changing
-  // _.map to _.parEvalMap. We should do this only if we observe that bigger compute instances
+  // _.evalMap to _.parEvalMap. We should do this only if we observe that bigger compute instances
   // cannot make 100% use of the available cpu.
-  private def parseBytes[F[_]](
+  //
+  // The computation is wrapped in Applicative[F].pure() so the Cats Effect runtime can cede to other fibers
+  private def parseBytes[F[_]: Applicative](
     processor: BadRowProcessor
   ): Pipe[F, List[Array[Byte]], (List[BadRow], List[Parsed])] =
-    _.map { list =>
-      list.map { bytes =>
-        val stringified = new String(bytes, StandardCharsets.UTF_8)
-        Event
-          .parse(stringified)
-          .map(event => Parsed(event, bytes.size, TabledEntity.forEvent(event)))
-          .leftMap { failure =>
-            val payload = BadRowRawPayload(stringified)
-            BadRow.LoaderParsingError(processor, failure, payload)
+    _.evalMap { list =>
+      list
+        .traverse { bytes =>
+          Applicative[F].pure {
+            val stringified = new String(bytes, StandardCharsets.UTF_8)
+            Event
+              .parse(stringified)
+              .map(event => Parsed(event, bytes.size, TabledEntity.forEvent(event)))
+              .leftMap { failure =>
+                val payload = BadRowRawPayload(stringified)
+                BadRow.LoaderParsingError(processor, failure, payload)
+              }
           }
-      }.separate
+        }
+        .map(_.separate)
     }
 
   private implicit def batchedMonoid: Monoid[Batched] = new Monoid[Batched] {
@@ -164,16 +165,25 @@ object Processing {
     }
 
   // This is a pure cpu-bound task. In future we might choose to make this parallel by changing
-  // `events.map` to something like `events.grouped(1000).parTraverse(...)`
+  // `events.traverse` to something like `events.grouped(1000).parTraverse(...)`
   // We should do this only if we observe that bigger compute instances cannot make 100% use of the
   // available cpu.
-  private def transformToSpark[F[_]](
+  //
+  // The computation is wrapped in Applicative[F].pure() so the Cats Effect runtime can cede to other fibers
+  private def transformToSpark[F[_]: Applicative](
     processor: BadRowProcessor
   ): Pipe[F, BatchWithTypes, (List[BadRow], RowsWithSchema)] =
-    _.map { case BatchWithTypes(events, entities) =>
-      val results = events.map(Transform.eventToRow(processor, _, entities))
-      val (bad, good) = results.separate
-      (bad, RowsWithSchema(good, SparkSchema.forBatch(entities.fields.map(_.mergedField))))
+    _.evalMap { case BatchWithTypes(events, entities) =>
+      events
+        .traverse { event =>
+          Applicative[F].pure {
+            Transform.eventToRow(processor, event, entities)
+          }
+        }
+        .map { results =>
+          val (bad, good) = results.separate
+          (bad, RowsWithSchema(good, SparkSchema.forBatch(entities.fields.map(_.mergedField))))
+        }
     }
 
   private def sendFailedEvents[F[_]: Applicative, A](sink: Sink[F]): Pipe[F, (List[BadRow], A), A] =

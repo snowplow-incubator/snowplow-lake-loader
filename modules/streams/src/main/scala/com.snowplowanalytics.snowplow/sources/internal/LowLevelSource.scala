@@ -4,6 +4,7 @@ import cats.Monad
 import cats.implicits._
 import cats.effect.std.{MapRef, Queue}
 import cats.effect.kernel.Unique
+import cats.effect.kernel.Resource.ExitCase
 import cats.effect.{Async, Sync}
 import fs2.{Pipe, Pull, Stream}
 import org.typelevel.log4cats.Logger
@@ -53,9 +54,17 @@ private[sources] object LowLevelSource {
     def stream(config: EventProcessingConfig, processor: EventProcessor[F]): Stream[F, Nothing] =
       source.stream.flatMap { s2 =>
         Stream.eval(MapRef.ofSingleImmutableMap[F, Unique.Token, C]()).flatMap { ref =>
-          s2.through(tokened(ref))
+          val tokenedSources = s2
+            .through(tokened(ref))
             .through(windowed(config.windowing))
-            .map(CleanCancellation(messageSink(processor, ref, source.checkpointer)))
+
+          val sinks = EagerWindows.pipes { control: EagerWindows.Control[F] =>
+            CleanCancellation(messageSink(processor, ref, source.checkpointer, control))
+          }
+
+          tokenedSources
+            .zip(sinks)
+            .map { case (tokenedSource, sink) => sink(tokenedSource) }
             .parJoin(2) // so we start processing the next window while the previous window is still finishing up.
         }
       }
@@ -90,17 +99,23 @@ private[sources] object LowLevelSource {
    *   map.
    * @param checkpointer
    *   Actions a ack/checkpoint when given a checkpointable action
+   * @param control
+   *   Controls the processing of eager windows. Prevents the next eager window from checkpointing
+   *   any events before the previous window is fully finalized.
    */
   private def messageSink[F[_]: Async, C](
     processor: EventProcessor[F],
     ref: MapRef[F, Unique.Token, Option[C]],
-    checkpointer: Checkpointer[F, C]
+    checkpointer: Checkpointer[F, C],
+    control: EagerWindows.Control[F]
   ): Pipe[F, TokenedEvents, Nothing] =
-    _.evalTap { case TokenedEvents(events, _) =>
-      Logger[F].debug(s"Batch of ${events.size} events received from the source stream")
-    }
+    _.append(Stream.eval(control.waitForPreviousWindow).drain)
+      .evalTap { case TokenedEvents(events, _) =>
+        Logger[F].debug(s"Batch of ${events.size} events received from the source stream")
+      }
       .through(processor)
       .chunks
+      .evalTap(_ => control.waitForPreviousWindow)
       .prefetch // This prefetch means we can ack messages concurrently with processing the next batch
       .evalMap { chunk =>
         chunk.iterator.toSeq
@@ -115,6 +130,12 @@ private[sources] object LowLevelSource {
           }
       }
       .drain
+      .onFinalizeCase {
+        case ExitCase.Succeeded =>
+          control.unblockNextWindow(EagerWindows.PreviousWindowSuccess)
+        case ExitCase.Canceled | ExitCase.Errored(_) =>
+          control.unblockNextWindow(EagerWindows.PreviousWindowFailed)
+      }
 
   private def windowed[F[_]: Async, A](config: EventProcessingConfig.Windowing): Pipe[F, A, Stream[F, A]] =
     config match {
