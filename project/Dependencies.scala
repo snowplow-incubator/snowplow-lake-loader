@@ -36,7 +36,8 @@ object Dependencies {
     val hadoop  = "3.3.5"
 
     // java
-    val slf4j = "2.0.7"
+    val slf4j    = "2.0.7"
+    val azureSdk = "1.9.1"
 
     // Snowplow
     val schemaDdl  = "0.18.2"
@@ -73,6 +74,7 @@ object Dependencies {
   
   // java
   val slf4j             = "org.slf4j"                  % "slf4j-simple"                % V.slf4j
+  val azureIdentity     = "com.azure"                  % "azure-identity"              % V.azureSdk
 
   // snowplow: Note jackson-databind 2.14.x is incompatible with Spark
   val badrows           = "com.snowplowanalytics"      %% "snowplow-badrows"         % V.badrows
@@ -133,7 +135,8 @@ object Dependencies {
   )
 
   val azureDependencies = Seq(
-    hadoopAzure % Runtime
+    azureIdentity,
+    hadoopAzure
   ) ++ commonRuntimeDependencies
 
 }
