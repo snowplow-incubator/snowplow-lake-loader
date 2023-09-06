@@ -50,16 +50,16 @@ object Environment {
       lakeWriter <- LakeWriter.build[F](config.main.spark, config.main.output.good)
       metrics <- Resource.eval(Metrics.build(config.main.monitoring.metrics))
     } yield Environment(
-      appInfo = appInfo,
-      source = source(config.main.input),
-      badSink = badSink,
-      resolver = resolver,
-      httpClient = httpClient,
-      lakeWriter = lakeWriter,
-      metrics = metrics,
-      cpuParallelism = chooseCpuParallelism(config.main),
+      appInfo         = appInfo,
+      source          = source(config.main.input),
+      badSink         = badSink,
+      resolver        = resolver,
+      httpClient      = httpClient,
+      lakeWriter      = lakeWriter,
+      metrics         = metrics,
+      cpuParallelism  = chooseCpuParallelism(config.main),
       inMemBatchBytes = config.main.inMemBatchBytes,
-      windowing = windowing
+      windowing       = windowing
     )
 
   private def enableSentry[F[_]: Sync](appInfo: AppInfo, config: Option[Config.Sentry]): Resource[F, Unit] =
@@ -77,7 +77,7 @@ object Environment {
 
         Resource.makeCase(acquire) {
           case (_, Resource.ExitCase.Errored(e)) => Sync[F].delay(Sentry.captureException(e)).void
-          case _ => Sync[F].unit
+          case _                                 => Sync[F].unit
         }
       case None =>
         Resource.unit[F]

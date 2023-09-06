@@ -17,6 +17,8 @@ import fs2.Stream
 import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 
+import java.nio.ByteBuffer
+
 // pubsub
 import com.google.api.core.{ApiFutures, ApiService}
 import com.google.api.gax.batching.FlowControlSettings
@@ -72,7 +74,7 @@ object PubsubSource {
       }
   }
 
-  private case class SingleMessage[F[_]](message: Array[Byte], ackReply: AckReplyConsumerWithResponse)
+  private case class SingleMessage[F[_]](message: ByteBuffer, ackReply: AckReplyConsumerWithResponse)
 
   private def pubsubStream[F[_]: Async](config: PubsubSourceConfig): Stream[F, LowLevelEvents[List[AckReplyConsumerWithResponse]]] = {
     val resources = for {
@@ -90,11 +92,11 @@ object PubsubSource {
         .chunks
         .map { chunk =>
           val events = chunk.map(_.message).toList
-          val acks = chunk.map(_.ackReply).toList
+          val acks   = chunk.map(_.ackReply).toList
           LowLevelEvents(events, acks)
         }
         .evalTap { case LowLevelEvents(events, _) =>
-          val numPermits = events.map(e => permitsFor(config, e.size)).sum
+          val numPermits = events.map(e => permitsFor(config, e.limit())).sum
           semaphore.releaseN(numPermits)
         }
         .interruptWhen(sig)
@@ -127,7 +129,7 @@ object PubsubSource {
     semaphore: Semaphore[F],
     sig: Deferred[F, Either[Throwable, Unit]]
   ): Stream[F, Unit] = {
-    val name = ProjectSubscriptionName.of(config.subscription.projectId, config.subscription.subscriptionId)
+    val name     = ProjectSubscriptionName.of(config.subscription.projectId, config.subscription.subscriptionId)
     val receiver = messageReceiver(config, queue, dispatcher, semaphore, sig)
 
     for {
@@ -141,7 +143,7 @@ object PubsubSource {
                         .setParallelPullCount(config.parallelPullCount)
                         .setExecutorProvider {
                           new ExecutorProvider {
-                            def shouldAutoClose: Boolean = true
+                            def shouldAutoClose: Boolean              = true
                             def getExecutor: ScheduledExecutorService = executor
                           }
                         }
@@ -188,7 +190,7 @@ object PubsubSource {
     new MessageReceiverWithAckResponse {
       def receiveMessage(message: PubsubMessage, ackReply: AckReplyConsumerWithResponse): Unit = {
         val put = semaphore.acquireN(permitsFor(config, message.getData.size)) *>
-          queue.offer(SingleMessage(message.getData.toByteArray, ackReply))
+          queue.offer(SingleMessage(message.getData.asReadOnlyByteBuffer(), ackReply))
 
         val io = put
           .race(sig.get)
@@ -204,7 +206,7 @@ object PubsubSource {
     }
 
   private def scheduledExecutorService: ScheduledExecutorService = new ForwardingListeningExecutorService with ScheduledExecutorService {
-    val delegate = MoreExecutors.newDirectExecutorService
+    val delegate       = MoreExecutors.newDirectExecutorService
     lazy val scheduler = new ScheduledThreadPoolExecutor(1) // I think this scheduler is never used, but I implement it here for safety
     override def schedule[V](
       callable: Callable[V],

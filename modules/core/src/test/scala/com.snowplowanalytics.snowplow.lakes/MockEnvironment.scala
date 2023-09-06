@@ -53,16 +53,16 @@ object MockEnvironment {
       counter <- Ref[IO].of(0)
     } yield {
       val env = Environment(
-        appInfo = TestSparkEnvironment.appInfo,
-        source = testSourceAndAck(windows, state),
-        badSink = testSink(state),
-        resolver = Resolver[IO](Nil, None),
-        httpClient = testHttpClient,
-        lakeWriter = testLakeWriter(state, counter),
-        metrics = TestSparkEnvironment.testMetrics,
+        appInfo         = TestSparkEnvironment.appInfo,
+        source          = testSourceAndAck(windows, state),
+        badSink         = testSink(state),
+        resolver        = Resolver[IO](Nil, None),
+        httpClient      = testHttpClient,
+        lakeWriter      = testLakeWriter(state, counter),
+        metrics         = TestSparkEnvironment.testMetrics,
         inMemBatchBytes = 1000000L,
-        cpuParallelism = 1,
-        windowing = EventProcessingConfig.TimedWindows(1.minute, 1.0)
+        cpuParallelism  = 1,
+        windowing       = EventProcessingConfig.TimedWindows(1.minute, 1.0)
       )
       MockEnvironment(state, env)
     }

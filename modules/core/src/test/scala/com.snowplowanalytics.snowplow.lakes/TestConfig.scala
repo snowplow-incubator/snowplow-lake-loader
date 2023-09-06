@@ -19,7 +19,7 @@ object TestConfig {
       .load(fallbacks)
       .as[Config[Option[Unit], Option[Unit]]] match {
       case Right(ok) => ok
-      case Left(e) => throw new RuntimeException("Could not load default config for testing", e)
+      case Left(e)   => throw new RuntimeException("Could not load default config for testing", e)
     }
 
   private def fallbacks = ConfigFactory.parseString("""

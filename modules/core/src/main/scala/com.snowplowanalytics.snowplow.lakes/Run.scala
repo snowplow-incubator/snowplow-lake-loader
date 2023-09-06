@@ -32,7 +32,7 @@ object Run {
     toBadSink: SinkConfig => Resource[F, Sink[F]]
   ): Opts[F[ExitCode]] = {
     val configPathOpt = Opts.option[Path]("config", help = "path to config file")
-    val igluPathOpt = Opts.option[Path]("iglu-config", help = "path to iglu resolver config file")
+    val igluPathOpt   = Opts.option[Path]("iglu-config", help = "path to iglu resolver config file")
     (configPathOpt, igluPathOpt).mapN(fromConfigPaths(appInfo, toSource, toBadSink, _, _))
   }
 

@@ -19,7 +19,6 @@ import org.typelevel.log4cats.slf4j.Slf4jLogger
 
 import java.nio.charset.StandardCharsets
 import scala.concurrent.duration.FiniteDuration
-
 import com.snowplowanalytics.iglu.client.resolver.registries.{Http4sRegistryLookup, RegistryLookup}
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
 import com.snowplowanalytics.snowplow.badrows.{BadRow, Processor => BadRowProcessor}
@@ -28,13 +27,15 @@ import com.snowplowanalytics.snowplow.sources.{EventProcessingConfig, EventProce
 import com.snowplowanalytics.snowplow.lakes.Environment
 import com.snowplowanalytics.snowplow.loaders.{NonAtomicFields, SchemaSubVersion, TabledEntity, Transform, TypedTabledEntity}
 
+import java.nio.ByteBuffer
+
 object Processing {
 
   private implicit def logger[F[_]: Sync] = Slf4jLogger.getLogger[F]
 
   def stream[F[_]: Async](env: Environment[F]): Stream[F, Nothing] =
     Stream.eval(env.lakeWriter.createTable).flatMap { _ =>
-      implicit val lookup: RegistryLookup[F] = Http4sRegistryLookup(env.httpClient)
+      implicit val lookup: RegistryLookup[F]           = Http4sRegistryLookup(env.httpClient)
       val eventProcessingConfig: EventProcessingConfig = EventProcessingConfig(env.windowing)
       env.source.stream(eventProcessingConfig, eventProcessor(env))
     }
@@ -128,12 +129,12 @@ object Processing {
       }
     }.drain
 
-  private def rememberTokens[F[_]: Functor](ref: Ref[F, WindowState]): Pipe[F, TokenedEvents, List[Array[Byte]]] =
+  private def rememberTokens[F[_]: Functor](ref: Ref[F, WindowState]): Pipe[F, TokenedEvents, List[ByteBuffer]] =
     _.evalMap { case TokenedEvents(events, token) =>
       ref.update(state => state.copy(tokens = token :: state.tokens)).as(events)
     }
 
-  private def incrementReceivedCount[F[_]](env: Environment[F]): Pipe[F, List[Array[Byte]], List[Array[Byte]]] =
+  private def incrementReceivedCount[F[_]](env: Environment[F]): Pipe[F, List[ByteBuffer], List[ByteBuffer]] =
     _.evalTap { events =>
       env.metrics.addReceived(events.size)
     }
@@ -151,17 +152,18 @@ object Processing {
   private def parseBytes[F[_]: Async](
     env: Environment[F],
     processor: BadRowProcessor
-  ): Pipe[F, List[Array[Byte]], (List[BadRow], Batched)] =
+  ): Pipe[F, List[ByteBuffer], (List[BadRow], Batched)] =
     _.parEvalMapUnordered(env.cpuParallelism) { list =>
       list
-        .traverse { bytes =>
+        .traverse { byteBuffer =>
           Applicative[F].pure {
-            val stringified = new String(bytes, StandardCharsets.UTF_8)
+            val stringified = StandardCharsets.UTF_8.decode(byteBuffer).toString
             Event
               .parse(stringified)
-              .map(event => Parsed(event, bytes.size, TabledEntity.forEvent(event)))
+              .map(event => Parsed(event, byteBuffer.capacity(), TabledEntity.forEvent(event)))
               .leftMap { failure =>
                 val payload = BadRowRawPayload(stringified)
+
                 BadRow.LoaderParsingError(processor, failure, payload)
               }
           }
@@ -190,8 +192,8 @@ object Processing {
     ): Pull[F, Batched, Unit] =
       source.pull.uncons1.flatMap {
         case None if batch.originalBytes > 0 => Pull.output1(batch) >> Pull.done
-        case None => Pull.done
-        case Some((Nil, source)) => go(source, batch)
+        case None                            => Pull.done
+        case Some((Nil, source))             => go(source, batch)
         case Some((pulled, source)) =>
           val combined = batch |+| pulled
           if (combined.originalBytes > maxBytes)

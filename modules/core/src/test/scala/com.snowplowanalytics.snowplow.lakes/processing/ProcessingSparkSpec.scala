@@ -14,17 +14,18 @@ import io.circe.Json
 import fs2.Stream
 import org.specs2.Specification
 import org.specs2.matcher.MatchResult
-
 import org.apache.spark.sql.SparkSession
 import io.delta.tables.DeltaTable
 
 import scala.concurrent.duration.DurationInt
-import java.nio.charset.StandardCharsets
 
 import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer, SelfDescribingData}
 import com.snowplowanalytics.snowplow.analytics.scalasdk.{Event, SnowplowEvent}
+import java.nio.charset.StandardCharsets
 import com.snowplowanalytics.snowplow.lakes.TestSparkEnvironment
 import com.snowplowanalytics.snowplow.sources.TokenedEvents
+
+import java.nio.ByteBuffer
 
 class ProcessingSparkSpec extends Specification with CatsEffect {
   import ProcessingSparkSpec._
@@ -56,14 +57,14 @@ class ProcessingSparkSpec extends Specification with CatsEffect {
       sparkForAssertions.use { spark =>
         IO.delay {
           import spark.implicits._
-          val tbl = DeltaTable.forPath(spark, tmpDir.resolve("events").toString)
-          val df = tbl.toDF
+          val tbl  = DeltaTable.forPath(spark, tmpDir.resolve("events").toString)
+          val df   = tbl.toDF
           val cols = df.columns.toSeq
 
-          val inputEventIds = inputEvents.flatten.map(_.event_id.toString)
+          val inputEventIds  = inputEvents.flatten.map(_.event_id.toString)
           val outputEventIds = df.select("event_id").as[String].collect().toSeq
-          val loadTstamps = df.select("load_tstamp").as[java.sql.Timestamp].collect().toSeq
-          val trTotals = df.select("tr_total").as[BigDecimal].collect().toSeq
+          val loadTstamps    = df.select("load_tstamp").as[java.sql.Timestamp].collect().toSeq
+          val trTotals       = df.select("tr_total").as[BigDecimal].collect().toSeq
 
           List[MatchResult[Any]](
             cols must contain("event_id"),
@@ -99,13 +100,13 @@ class ProcessingSparkSpec extends Specification with CatsEffect {
       sparkForAssertions.use { spark =>
         IO.delay {
           import spark.implicits._
-          val tbl = DeltaTable.forPath(spark, tmpDir.resolve("events").toString)
-          val df = tbl.toDF
+          val tbl  = DeltaTable.forPath(spark, tmpDir.resolve("events").toString)
+          val df   = tbl.toDF
           val cols = df.columns.toSeq
 
-          val inputEventIds = inputEvents.flatten.map(_.event_id.toString)
+          val inputEventIds  = inputEvents.flatten.map(_.event_id.toString)
           val outputEventIds = df.select("event_id").as[String].collect().toSeq
-          val loadTstamps = df.select("load_tstamp").as[java.sql.Timestamp].collect().toSeq
+          val loadTstamps    = df.select("load_tstamp").as[java.sql.Timestamp].collect().toSeq
 
           List[MatchResult[Any]](
             cols must contain("event_id"),
@@ -141,7 +142,7 @@ object ProcessingSparkSpec {
           .minimal(eventId2, collectorTstamp, "0.0.0", "0.0.0")
           .copy(unstruct_event = ueGood701)
         val serialized = List(event1, event2).map { e =>
-          e.toTsv.getBytes(StandardCharsets.UTF_8)
+          ByteBuffer.wrap(e.toTsv.getBytes(StandardCharsets.UTF_8))
         }
         (TokenedEvents(serialized, ack), List(event1, event2))
       }
@@ -162,7 +163,7 @@ object ProcessingSparkSpec {
           .minimal(eventId2, collectorTstamp, "0.0.0", "0.0.0")
           .copy(unstruct_event = ueBadEvolution101)
         val serialized = List(event1, event2).map { e =>
-          e.toTsv.getBytes(StandardCharsets.UTF_8)
+          ByteBuffer.wrap(e.toTsv.getBytes(StandardCharsets.UTF_8))
         }
         (TokenedEvents(serialized, ack), List(event1, event2))
       }
