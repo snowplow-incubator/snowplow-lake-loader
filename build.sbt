@@ -22,6 +22,14 @@ lazy val streams: Project = project
   .settings(BuildSettings.commonSettings)
   .settings(libraryDependencies ++= Dependencies.streamsDependencies)
 
+lazy val kinesis: Project = project
+  .in(file("snowplow-common-internal/kinesis"))
+  .settings(BuildSettings.commonSettings)
+  .settings(libraryDependencies ++= Dependencies.kinesisDependencies)
+  .dependsOn(streams)
+  .settings(Defaults.itSettings)
+  .configs(IntegrationTest)
+
 lazy val kafka: Project = project
   .in(file("snowplow-common-internal/kafka"))
   .settings(BuildSettings.commonSettings)
@@ -80,3 +88,4 @@ lazy val gcpWithBiglake: Project = project
   .enablePlugins(BuildInfoPlugin, JavaAppPackaging, SnowplowDockerPlugin)
 
 ThisBuild / fork := true
+Global / onChangedBuildSource := ReloadOnSourceChanges
