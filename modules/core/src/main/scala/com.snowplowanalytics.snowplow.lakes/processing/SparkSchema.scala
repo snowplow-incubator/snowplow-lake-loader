@@ -10,7 +10,7 @@ package com.snowplowanalytics.snowplow.lakes.processing
 import org.apache.spark.sql.types._
 
 import com.snowplowanalytics.iglu.schemaddl.parquet.{Field, Type}
-import com.snowplowanalytics.snowplow.loaders.AtomicFields
+import com.snowplowanalytics.snowplow.loaders.{AtomicFields, TypedTabledEntity}
 
 private[processing] object SparkSchema {
 
@@ -19,8 +19,12 @@ private[processing] object SparkSchema {
    *
    * The returned schema includes atomic fields and non-atomic fields but not the load_tstamp column
    */
-  def forBatch(entities: List[Field]): StructType =
-    StructType(atomic ::: entities.map(asSparkField))
+  def forBatch(entities: List[TypedTabledEntity]): StructType = {
+    val nonAtomicFields = entities.flatMap { tte =>
+      tte.mergedField :: tte.recoveries.map(_._2)
+    }
+    StructType(atomic ::: nonAtomicFields.map(asSparkField))
+  }
 
   /**
    * Ordered Fields corresponding to the output from Enrich

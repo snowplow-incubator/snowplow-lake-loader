@@ -106,7 +106,7 @@ object PubsubSource {
       override def failed(from: ApiService.State, failure: Throwable): Unit =
         dispatcher.unsafeRunSync {
           Logger[F].error(failure)("Error from Pubsub subscriber") *>
-          sig.complete(Left(failure)).void
+            sig.complete(Left(failure)).void
         }
     }
 
@@ -115,7 +115,7 @@ object PubsubSource {
     queue: Queue[F, SingleMessage[F]],
     dispatcher: Dispatcher[F],
     semaphore: Semaphore[F],
-    sig: Deferred[F, Either[Throwable, Unit]],
+    sig: Deferred[F, Either[Throwable, Unit]]
   ): Stream[F, Unit] = {
     val name = ProjectSubscriptionName.of(config.subscription.projectId, config.subscription.subscriptionId)
     val receiver = messageReceiver(queue, dispatcher, semaphore, sig)
@@ -123,33 +123,33 @@ object PubsubSource {
     for {
       executor <- Stream.bracket(Sync[F].delay(scheduledExecutorService))(s => Sync[F].delay(s.shutdown()))
       subscriber <- Stream.eval(Sync[F].delay {
-        Subscriber
-          .newBuilder(name, receiver)
-          .setMaxAckExtensionPeriod(convertDuration(config.maxAckExtensionPeriod))
-          .setMaxDurationPerAckExtension(convertDuration(config.maxDurationPerAckExtension))
-          .setMinDurationPerAckExtension(convertDuration(config.minDurationPerAckExtension))
-          .setParallelPullCount(config.parallelPullCount)
-          .setExecutorProvider {
-            new ExecutorProvider {
-              def shouldAutoClose: Boolean = true
-              def getExecutor: ScheduledExecutorService = executor
-            }
-          }
-          .setFlowControlSettings {
-            // Switch off any flow control, because we handle it ourselves with the semaphore
-            FlowControlSettings.getDefaultInstance
-          }
-          .build
-      })
+                      Subscriber
+                        .newBuilder(name, receiver)
+                        .setMaxAckExtensionPeriod(convertDuration(config.maxAckExtensionPeriod))
+                        .setMaxDurationPerAckExtension(convertDuration(config.maxDurationPerAckExtension))
+                        .setMinDurationPerAckExtension(convertDuration(config.minDurationPerAckExtension))
+                        .setParallelPullCount(config.parallelPullCount)
+                        .setExecutorProvider {
+                          new ExecutorProvider {
+                            def shouldAutoClose: Boolean = true
+                            def getExecutor: ScheduledExecutorService = executor
+                          }
+                        }
+                        .setFlowControlSettings {
+                          // Switch off any flow control, because we handle it ourselves with the semaphore
+                          FlowControlSettings.getDefaultInstance
+                        }
+                        .build
+                    })
       _ <- Stream.eval(Sync[F].delay {
-        subscriber.addListener(errorListener(dispatcher, sig), MoreExecutors.directExecutor)
-      })
+             subscriber.addListener(errorListener(dispatcher, sig), MoreExecutors.directExecutor)
+           })
       _ <- Stream.bracket(Sync[F].delay(subscriber.startAsync())) { apiService =>
-        for {
-          _ <- Sync[F].delay(apiService.stopAsync())
-          _ <- drainQueue(queue)
-        } yield ()
-      }
+             for {
+               _ <- Sync[F].delay(apiService.stopAsync())
+               _ <- drainQueue(queue)
+             } yield ()
+           }
     } yield ()
   }
 
@@ -168,7 +168,6 @@ object PubsubSource {
     }
   }
 
-
   private def messageReceiver[F[_]: Async](
     queue: QueueSink[F, SingleMessage[F]],
     dispatcher: Dispatcher[F],
@@ -180,7 +179,8 @@ object PubsubSource {
         val put = semaphore.acquireN(message.getData.size.toLong) *>
           queue.offer(SingleMessage(message.getData.toByteArray, ackReply))
 
-        val io = put.race(sig.get)
+        val io = put
+          .race(sig.get)
           .flatMap {
             case Right(_) =>
               FutureInterop.fromFuture(ackReply.nack())

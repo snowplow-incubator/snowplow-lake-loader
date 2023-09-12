@@ -88,7 +88,7 @@ object Transform {
   ): ValidatedNel[FailureDetails.LoaderIgluError, List[Caster.NamedValue[A]]] =
     entities.flatMap { case TypedTabledEntity(entity, field, subVersions, recoveries) =>
       val head = forEntity(caster, entity, field, subVersions, event)
-      val tail = recoveries.toList.map { case (recoveryVersion, recoveryField) =>
+      val tail = recoveries.map { case (recoveryVersion, recoveryField) =>
         forEntity(caster, entity, recoveryField, Set(recoveryVersion), event)
       }
       head :: tail
@@ -197,7 +197,7 @@ object Transform {
       List[A](
         event.app_id.fold[A](caster.nullValue)(caster.stringValue(_)),
         event.platform.fold[A](caster.nullValue)(caster.stringValue(_)),
-        event.etl_tstamp.fold[A](caster.nullValue)(caster.timestampValue( _)),
+        event.etl_tstamp.fold[A](caster.nullValue)(caster.timestampValue(_)),
         caster.timestampValue(event.collector_tstamp),
         event.dvce_created_tstamp.fold[A](caster.nullValue)(caster.timestampValue(_)),
         event.event.fold[A](caster.nullValue)(caster.stringValue(_)),

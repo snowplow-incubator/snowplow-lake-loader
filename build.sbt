@@ -10,6 +10,8 @@ lazy val root = project.in(file("."))
   .aggregate(
     streams,
     kafka,
+    pubsub,
+    loadersCommon,
     core,
     azure,
     gcp

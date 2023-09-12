@@ -18,7 +18,11 @@ import java.net.{DatagramPacket, DatagramSocket, InetAddress}
 import java.nio.charset.StandardCharsets.UTF_8
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
-abstract class Metrics[F[_]: Async, S <: Metrics.State](ref: Ref[F, S], emptyState: S, config: Option[Metrics.StatsdConfig]) {
+abstract class Metrics[F[_]: Async, S <: Metrics.State](
+  ref: Ref[F, S],
+  emptyState: S,
+  config: Option[Metrics.StatsdConfig]
+) {
   def report: Stream[F, Nothing] = {
     val stream = for {
       reporters <- Stream.resource(Metrics.makeReporters[F](config))
