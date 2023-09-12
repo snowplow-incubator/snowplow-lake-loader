@@ -40,7 +40,6 @@ object Telemetry {
     moduleVersion: Option[String]
   )
 
-
   private implicit def unsafeLogger[F[_]: Sync]: Logger[F] =
     Slf4jLogger.getLogger[F]
 
@@ -54,7 +53,7 @@ object Telemetry {
     else {
       val stream = for {
         uuid <- Stream.eval(Async[F].delay(UUID.randomUUID))
-        sdj = makeHeartbeatEvent( config, appInfo, uuid)
+        sdj = makeHeartbeatEvent(config, appInfo, uuid)
         tracker <- Stream.resource(initTracker(config, appInfo.name, httpClient))
         _ <- Stream.unit ++ Stream.fixedDelay[F](config.interval)
         _ <- Stream.eval(tracker.trackSelfDescribingEvent(unstructEvent = sdj))

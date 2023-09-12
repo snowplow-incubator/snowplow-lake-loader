@@ -143,7 +143,7 @@ object Processing {
 
   private def rememberColumnNames[F[_]](ref: Ref[F, WindowState], fields: List[TypedTabledEntity]): F[Unit] = {
     val colNames = fields.flatMap { typedTabledEntity =>
-      typedTabledEntity.mergedField.name :: typedTabledEntity.recoveries.values.map(_.name).toList
+      typedTabledEntity.mergedField.name :: typedTabledEntity.recoveries.map(_._2.name)
     }.toSet
     ref.update(state => state.copy(nonAtomicColumnNames = state.nonAtomicColumnNames ++ colNames))
   }
@@ -224,7 +224,7 @@ object Processing {
       }
       .map { results =>
         val (bad, good) = results.separate
-        (bad, RowsWithSchema(good, SparkSchema.forBatch(entities.fields.map(_.mergedField))))
+        (bad, RowsWithSchema(good, SparkSchema.forBatch(entities.fields)))
       }
 
   private def sendAndDropFailedEvents[F[_]: Applicative, A](env: Environment[F]): Pipe[F, (List[BadRow], A), A] =

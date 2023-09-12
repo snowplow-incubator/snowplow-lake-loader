@@ -50,6 +50,7 @@ object Dependencies {
     val protobuf     = "3.24.2"
     val snappy       = "1.1.10.2"
     val thrift       = "0.18.1"
+    val jackson      = "2.14.2"
 
     // tests
     val specs2           = "4.20.0"
@@ -94,6 +95,7 @@ object Dependencies {
   val snappy            = "org.xerial.snappy"          % "snappy-java"                        % V.snappy
   val hadoopYarn        = "org.apache.hadoop"          % "hadoop-yarn-server-resourcemanager" % V.hadoop
   val thrift            = "org.apache.thrift"          % "libthrift"                          % V.thrift
+  val jackson           = "com.fasterxml.jackson.core" % "jackson-databind"                   % V.jackson
 
   // snowplow: Note jackson-databind 2.14.x is incompatible with Spark
   val badrows           = "com.snowplowanalytics"      %% "snowplow-badrows"                      % V.badrows
@@ -150,7 +152,8 @@ object Dependencies {
     trackerEmit,
     specs2,
     catsEffectSpecs2,
-    slf4j % Test
+    slf4j % Test,
+    jackson % Test // only needed because we excluded jackson because of the spark issue
   )
 
   val coreDependencies = Seq(

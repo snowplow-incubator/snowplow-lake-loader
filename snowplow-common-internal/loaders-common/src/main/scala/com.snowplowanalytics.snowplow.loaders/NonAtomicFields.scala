@@ -21,9 +21,9 @@ object NonAtomicFields {
    *
    * @param fields
    *   field type information about each family of Iglu schema. E.g. if a batch contains versions
-   *   1-0-0, 1-0-1 and 1-1-0 of a schema, they will be present as a single item of this list. If the
-   *   batch also contains version 2-0-0 of that schema, it will be present as an extra item of this
-   *   list.
+   *   1-0-0, 1-0-1 and 1-1-0 of a schema, they will be present as a single item of this list. If
+   *   the batch also contains version 2-0-0 of that schema, it will be present as an extra item of
+   *   this list.
    * @param igluFailures
    *   details of schemas that were present in the batch but could not be looked up by the Iglu
    *   resolver.
