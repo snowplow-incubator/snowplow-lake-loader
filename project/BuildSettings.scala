@@ -29,7 +29,14 @@ object BuildSettings {
     scalacOptions += "-Ywarn-macros:after",
     addCompilerPlugin(Dependencies.betterMonadicFor),
     ThisBuild / dynverVTagPrefix := false, // Otherwise git tags required to have v-prefix
-    ThisBuild / dynverSeparator := "-" // to be compatible with docker
+    ThisBuild / dynverSeparator := "-", // to be compatible with docker
+
+    Compile / resourceGenerators += Def.task {
+      val license = (Compile / resourceManaged).value / "META-INF" / "LICENSE"
+      IO.copyFile(file("LICENSE.md"), license)
+      Seq(license)
+    }.taskValue
+
   )
 
   lazy val logSettings = Seq(
