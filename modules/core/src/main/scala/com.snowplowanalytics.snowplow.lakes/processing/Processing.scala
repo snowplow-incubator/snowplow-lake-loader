@@ -34,7 +34,7 @@ object Processing {
 
   def stream[F[_]: Async](env: Environment[F]): Stream[F, Nothing] =
     Stream.eval(env.lakeWriter.createTable).flatMap { _ =>
-      implicit val lookup: RegistryLookup[F] = Http4sRegistryLookup(env.httpClient)
+      implicit val lookup: RegistryLookup[F]           = Http4sRegistryLookup(env.httpClient)
       val eventProcessingConfig: EventProcessingConfig = EventProcessingConfig(env.windowing)
       env.source.stream(eventProcessingConfig, eventProcessor(env))
     }
@@ -190,8 +190,8 @@ object Processing {
     ): Pull[F, Batched, Unit] =
       source.pull.uncons1.flatMap {
         case None if batch.originalBytes > 0 => Pull.output1(batch) >> Pull.done
-        case None => Pull.done
-        case Some((Nil, source)) => go(source, batch)
+        case None                            => Pull.done
+        case Some((Nil, source))             => go(source, batch)
         case Some((pulled, source)) =>
           val combined = batch |+| pulled
           if (combined.originalBytes > maxBytes)

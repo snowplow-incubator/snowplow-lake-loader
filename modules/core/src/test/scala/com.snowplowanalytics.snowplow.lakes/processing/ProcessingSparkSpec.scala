@@ -53,14 +53,14 @@ class ProcessingSparkSpec extends Specification with CatsEffect {
       sparkForAssertions.use { spark =>
         IO.delay {
           import spark.implicits._
-          val tbl = DeltaTable.forPath(spark, tmpDir.resolve("events").toString)
-          val df = tbl.toDF
+          val tbl  = DeltaTable.forPath(spark, tmpDir.resolve("events").toString)
+          val df   = tbl.toDF
           val cols = df.columns.toSeq
 
-          val inputEventIds = inputEvents.flatten.map(_.event_id.toString)
+          val inputEventIds  = inputEvents.flatten.map(_.event_id.toString)
           val outputEventIds = df.select("event_id").as[String].collect().toSeq
-          val loadTstamps = df.select("load_tstamp").as[java.sql.Timestamp].collect().toSeq
-          val trTotals = df.select("tr_total").as[BigDecimal].collect().toSeq
+          val loadTstamps    = df.select("load_tstamp").as[java.sql.Timestamp].collect().toSeq
+          val trTotals       = df.select("tr_total").as[BigDecimal].collect().toSeq
 
           List[MatchResult[Any]](
             cols must contain("event_id"),

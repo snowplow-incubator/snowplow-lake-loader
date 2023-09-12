@@ -18,18 +18,18 @@ import com.snowplowanalytics.iglu.schemaddl.parquet.Caster
 
 private[processing] object SparkCaster extends Caster[Any] {
 
-  override def nullValue: AnyRef = null
-  override def jsonValue(v: Json): String = v.noSpaces
-  override def stringValue(v: String): String = v
+  override def nullValue: AnyRef                 = null
+  override def jsonValue(v: Json): String        = v.noSpaces
+  override def stringValue(v: String): String    = v
   override def booleanValue(v: Boolean): Boolean = v
-  override def intValue(v: Int): Int = v
-  override def longValue(v: Long): Long = v
-  override def doubleValue(v: Double): Double = v
+  override def intValue(v: Int): Int             = v
+  override def longValue(v: Long): Long          = v
+  override def doubleValue(v: Double): Double    = v
   override def decimalValue(unscaled: BigInt, details: Type.Decimal): BigDecimal =
     BigDecimal(unscaled, details.scale)
-  override def timestampValue(v: Instant): Instant = v
-  override def dateValue(v: LocalDate): LocalDate = v
-  override def arrayValue(vs: List[Any]): List[Any] = vs
+  override def timestampValue(v: Instant): Instant                = v
+  override def dateValue(v: LocalDate): LocalDate                 = v
+  override def arrayValue(vs: List[Any]): List[Any]               = vs
   override def structValue(vs: List[Caster.NamedValue[Any]]): Row = Row.fromSeq(vs.map(_.value))
 
 }

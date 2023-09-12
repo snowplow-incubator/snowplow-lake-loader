@@ -109,10 +109,10 @@ object Config {
 
   implicit def decoder[Source: Decoder, Sink: Decoder]: Decoder[Config[Source, Sink]] = {
     implicit val configuration = Configuration.default.withDiscriminator("type")
-    implicit val target = deriveConfiguredDecoder[Target]
-    implicit val output = deriveConfiguredDecoder[Output[Sink]]
-    implicit val spark = deriveConfiguredDecoder[Spark]
-    implicit val telemetry = deriveConfiguredDecoder[Telemetry.Config]
+    implicit val target        = deriveConfiguredDecoder[Target]
+    implicit val output        = deriveConfiguredDecoder[Output[Sink]]
+    implicit val spark         = deriveConfiguredDecoder[Spark]
+    implicit val telemetry     = deriveConfiguredDecoder[Telemetry.Config]
     implicit val statsdDecoder = deriveConfiguredDecoder[StatsdUnresolved].map(Statsd.resolve(_))
     implicit val sentryDecoder = deriveConfiguredDecoder[SentryM[Option]]
       .map[Option[Sentry]] {
@@ -121,7 +121,7 @@ object Config {
         case SentryM(None, _) =>
           None
       }
-    implicit val metricsDecoder = deriveConfiguredDecoder[Metrics]
+    implicit val metricsDecoder    = deriveConfiguredDecoder[Metrics]
     implicit val monitoringDecoder = deriveConfiguredDecoder[Monitoring]
     deriveConfiguredDecoder[Config[Source, Sink]]
   }
