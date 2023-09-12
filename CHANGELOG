@@ -1,3 +1,8 @@
+Version 0.1.1 (2023-09-13)
+--------------------------
+Add license file to packaged jar (#5)
+Fix loading when a schema needs recovery columns (#4)
+
 Version 0.1.0 (2023-09-10)
 --------------------------
 Initial release
