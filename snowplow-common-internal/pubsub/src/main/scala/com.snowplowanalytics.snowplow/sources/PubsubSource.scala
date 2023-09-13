@@ -17,6 +17,8 @@ import fs2.Stream
 import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 
+import java.nio.ByteBuffer
+
 // pubsub
 import com.google.api.core.{ApiFutures, ApiService}
 import com.google.api.gax.batching.FlowControlSettings
@@ -72,7 +74,7 @@ object PubsubSource {
       }
   }
 
-  private case class SingleMessage[F[_]](message: Array[Byte], ackReply: AckReplyConsumerWithResponse)
+  private case class SingleMessage[F[_]](message: ByteBuffer, ackReply: AckReplyConsumerWithResponse)
 
   private def pubsubStream[F[_]: Async](config: PubsubSourceConfig): Stream[F, LowLevelEvents[List[AckReplyConsumerWithResponse]]] = {
     val resources = for {
@@ -94,7 +96,7 @@ object PubsubSource {
           LowLevelEvents(events, acks)
         }
         .evalTap { case LowLevelEvents(events, _) =>
-          val numBytes = events.map(_.size).sum
+          val numBytes = events.map(_.array().length).sum
           semaphore.releaseN(numBytes.toLong)
         }
         .interruptWhen(sig)
@@ -178,7 +180,7 @@ object PubsubSource {
     new MessageReceiverWithAckResponse {
       def receiveMessage(message: PubsubMessage, ackReply: AckReplyConsumerWithResponse): Unit = {
         val put = semaphore.acquireN(message.getData.size.toLong) *>
-          queue.offer(SingleMessage(message.getData.toByteArray, ackReply))
+          queue.offer(SingleMessage(ByteBuffer.wrap(message.getData.toByteArray), ackReply))
 
         val io = put.race(sig.get)
           .flatMap {

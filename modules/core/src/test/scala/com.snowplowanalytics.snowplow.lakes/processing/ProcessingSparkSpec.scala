@@ -13,16 +13,17 @@ import cats.effect.testing.specs2.CatsEffect
 import fs2.Stream
 import org.specs2.Specification
 import org.specs2.matcher.MatchResult
-
 import org.apache.spark.sql.SparkSession
 import io.delta.tables.DeltaTable
 
 import scala.concurrent.duration.DurationInt
-import java.nio.charset.StandardCharsets
 
+import java.nio.charset.StandardCharsets
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
 import com.snowplowanalytics.snowplow.lakes.TestSparkEnvironment
 import com.snowplowanalytics.snowplow.sources.TokenedEvents
+
+import java.nio.ByteBuffer
 
 class ProcessingSparkSpec extends Specification with CatsEffect {
   import ProcessingSparkSpec._
@@ -92,7 +93,7 @@ object ProcessingSparkSpec {
           .copy(tr_total = Some(1.23))
         val event2 = Event.minimal(eventId2, collectorTstamp, "0.0.0", "0.0.0")
         val serialized = List(event1, event2).map { e =>
-          e.toTsv.getBytes(StandardCharsets.UTF_8)
+          ByteBuffer.wrap(e.toTsv.getBytes(StandardCharsets.UTF_8))
         }
         (TokenedEvents(serialized, ack), List(event1, event2))
       }

@@ -25,8 +25,6 @@ import software.amazon.awssdk.services.cloudwatch.CloudWatchAsyncClient
 import software.amazon.awssdk.services.dynamodb.DynamoDbAsyncClient
 import software.amazon.awssdk.services.kinesis.KinesisAsyncClient
 
-import scala.collection.mutable.ArrayBuffer
-
 import java.net.URI
 import java.util.concurrent.Semaphore
 import java.util.{Date, UUID}
@@ -53,8 +51,9 @@ object KinesisSource {
 
   private type KinesisCheckpointer[F[_]] = Checkpointer[F, Map[String, KinesisMetadata[F]]]
 
-  private def toMetadata[F[_]: Sync]: CommittableRecord => KinesisMetadata[F] = cr =>
-    KinesisMetadata(cr.shardId, cr.sequenceNumber, cr.isLastInShard, cr.lastRecordSemaphore, cr.checkpoint)
+  implicit class RichCommitableRecord[F[_]: Sync](val cr: CommittableRecord) extends AnyVal {
+    def toMetadata: KinesisMetadata[F] = KinesisMetadata(cr.shardId, cr.sequenceNumber, cr.isLastInShard, cr.lastRecordSemaphore, cr.checkpoint)
+  }
 
   final case class KinesisMetadata[F[_]](
     shardId: String,
@@ -147,19 +146,10 @@ object KinesisSource {
           .toList
           .groupBy(_.shardId)
           .view
-          .mapValues(_.maxBy(_.sequenceNumber))
-          .mapValues(toMetadata)
+          .mapValues(_.maxBy(_.sequenceNumber).toMetadata)
           .toMap
-        LowLevelEvents(chunk.toList.map(getPayload), ack)
+        LowLevelEvents(chunk.toList.map(_.record.data()), ack)
       }
-  }
-
-  def getPayload(record: CommittableRecord): Array[Byte] = {
-    val data = record.record.data
-    val buffer = ArrayBuffer[Byte]()
-    while (data.hasRemaining)
-      buffer.append(data.get)
-    buffer.toArray
   }
 
   private def scheduler[F[_]: Sync](
