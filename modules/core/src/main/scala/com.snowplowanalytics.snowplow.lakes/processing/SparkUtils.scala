@@ -18,7 +18,7 @@ import org.apache.spark.sql.{DataFrame, Row, SparkSession}
 import org.apache.spark.sql.functions.current_timestamp
 import org.apache.spark.sql.types.StructType
 import org.apache.spark.SnowplowOverrideShutdownHook
-import org.apache.spark.sql.delta.DeltaAnalysisException
+import org.apache.spark.sql.delta.{DeltaAnalysisException, DeltaConcurrentModificationException}
 import io.delta.tables.DeltaTable
 
 import com.snowplowanalytics.snowplow.lakes.Config
@@ -187,14 +187,8 @@ private[processing] object SparkUtils {
 
   private def sinkForTarget[F[_]: Sync](target: Config.Target, df: DataFrame): F[Unit] =
     target match {
-      case Config.Delta(location) =>
-        Sync[F].blocking {
-          df.write
-            .format("delta")
-            .mode("append")
-            .option("mergeSchema", true)
-            .save(location.toString)
-        }
+      case delta: Config.Delta =>
+        sinkDelta(delta, df)
       case iceberg: Config.Iceberg =>
         Sync[F].blocking {
           df.write
@@ -203,6 +197,33 @@ private[processing] object SparkUtils {
             .option("merge-schema", true)
             .option("check-ordering", false)
             .saveAsTable(qualifiedNameForIceberg(iceberg))
+        }
+    }
+
+  /**
+   * Sink to delta with retries
+   *
+   * Retry is needed if a concurrent writer updated the table metadata. It is only needed during
+   * schema evolution, when the pipeine starts tracking a new schema for the first time.
+   *
+   * Retry happens immediately with no delay. For this type of exception there is no reason to
+   * delay.
+   */
+  private def sinkDelta[F[_]: Sync](target: Config.Delta, df: DataFrame): F[Unit] =
+    Sync[F].untilDefinedM {
+      Sync[F]
+        .blocking[Option[Unit]] {
+          df.write
+            .format("delta")
+            .mode("append")
+            .option("mergeSchema", true)
+            .save(target.location.toString)
+          Some(())
+        }
+        .recoverWith { case e: DeltaConcurrentModificationException =>
+          Logger[F]
+            .warn(s"Retryable error writing to delta table: DeltaConcurrentModificationException with conflict type ${e.conflictType}")
+            .as(None)
         }
     }
 
