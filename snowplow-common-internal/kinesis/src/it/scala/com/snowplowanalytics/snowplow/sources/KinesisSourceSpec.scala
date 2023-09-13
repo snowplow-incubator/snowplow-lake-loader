@@ -40,7 +40,7 @@ class KinesisSourceSpec extends Specification with CatsEffect {
       localstack.followOutput(logs)
 
       val region = Region.of(localstack.getRegion)
-      val config = getKinesisConfig(localstack.getEndpoint, localstack.getRegion, inputStreamName)
+      val config = getKinesisConfig(localstack.getEndpoint, inputStreamName)
 
       val examplePayload = "example-payload"
 

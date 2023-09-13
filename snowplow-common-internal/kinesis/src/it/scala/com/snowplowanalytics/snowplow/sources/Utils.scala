@@ -25,6 +25,8 @@ import java.util.UUID
 
 object Utils {
 
+  val region: Region = Region.of("eu-central-1")
+
   def testProcessor(ref: Ref[IO, List[String]]): EventProcessor[IO] =
     _.evalMap { case TokenedEvents(events, token) =>
       for {
@@ -69,7 +71,6 @@ object Utils {
 
   def getKinesisConfig(
     endpoint: URI,
-    region: String,
     streamName: String
   ): KinesisSourceConfig = KinesisSourceConfig(
     UUID.randomUUID().toString,
@@ -80,7 +81,6 @@ object Utils {
     1,
     Some(endpoint),
     Some(endpoint),
-    Some(endpoint),
-    cloudwatch = false
+    Some(endpoint)
   )
 }

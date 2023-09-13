@@ -20,7 +20,6 @@ import fs2.aws.kinesis.{CommittableRecord, Kinesis, KinesisConsumerSettings}
 import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 
-import software.amazon.awssdk.regions.providers.DefaultAwsRegionProviderChain
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.cloudwatch.CloudWatchAsyncClient
 import software.amazon.awssdk.services.dynamodb.DynamoDbAsyncClient
@@ -28,7 +27,7 @@ import software.amazon.awssdk.services.kinesis.KinesisAsyncClient
 
 import scala.collection.mutable.ArrayBuffer
 
-import java.net.{InetAddress, URI}
+import java.net.URI
 import java.util.concurrent.Semaphore
 import java.util.{Date, UUID}
 
@@ -52,7 +51,7 @@ object KinesisSource {
   def build[F[_]: Parallel: Async](config: KinesisSourceConfig): SourceAndAck[F] =
     LowLevelSource.toSourceAndAck(lowLevel(config))
 
-  private type KinesisCheckpointer[F[_]] = Checkpointer[F, List[KinesisMetadata[F]]]
+  private type KinesisCheckpointer[F[_]] = Checkpointer[F, Map[String, KinesisMetadata[F]]]
 
   private def toMetadata[F[_]: Sync]: CommittableRecord => KinesisMetadata[F] = cr =>
     KinesisMetadata(cr.shardId, cr.sequenceNumber, cr.isLastInShard, cr.lastRecordSemaphore, cr.checkpoint)
@@ -65,24 +64,26 @@ object KinesisSource {
     ack: F[Unit]
   )
 
-  private def lowLevel[F[_]: Parallel: Async](config: KinesisSourceConfig): LowLevelSource[F, List[KinesisMetadata[F]]] =
-    new LowLevelSource[F, List[KinesisMetadata[F]]] {
+  private def lowLevel[F[_]: Parallel: Async](config: KinesisSourceConfig): LowLevelSource[F, Map[String, KinesisMetadata[F]]] =
+    new LowLevelSource[F, Map[String, KinesisMetadata[F]]] {
       def checkpointer: KinesisCheckpointer[F] = kinesisCheckpointer[F]
 
-      def stream: Stream[F, Stream[F, LowLevelEvents[List[KinesisMetadata[F]]]]] =
+      def stream: Stream[F, Stream[F, LowLevelEvents[Map[String, KinesisMetadata[F]]]]] =
         Stream.emit(kinesisStream(config))
     }
 
-  private def kinesisCheckpointer[F[_]: Parallel: Sync]: KinesisCheckpointer[F] = new KinesisCheckpointer[F] {
-    def combine(x: List[KinesisMetadata[F]], y: List[KinesisMetadata[F]]): List[KinesisMetadata[F]] = x ::: y
+  private implicit def metadataSemigroup[F[_]]: Semigroup[KinesisMetadata[F]] = new Semigroup[KinesisMetadata[F]] {
+    override def combine(x: KinesisMetadata[F], y: KinesisMetadata[F]): KinesisMetadata[F] =
+      if (x.sequenceNumber > y.sequenceNumber) x else y
+  }
 
-    val empty: List[KinesisMetadata[F]] = Nil
-    def ack(c: List[KinesisMetadata[F]]): F[Unit] =
-      c
-        .groupBy(_.shardId)
-        .view
-        .mapValues(_.maxBy(_.sequenceNumber))
-        .values
+  private def kinesisCheckpointer[F[_]: Parallel: Sync]: KinesisCheckpointer[F] = new KinesisCheckpointer[F] {
+    def combine(x: Map[String, KinesisMetadata[F]], y: Map[String, KinesisMetadata[F]]): Map[String, KinesisMetadata[F]] =
+      x |+| y
+
+    val empty: Map[String, KinesisMetadata[F]] = Map.empty
+    def ack(c: Map[String, KinesisMetadata[F]]): F[Unit] =
+      c.values
         .toList
         .parTraverse_ { metadata =>
           metadata.ack
@@ -112,13 +113,13 @@ object KinesisSource {
                 )
             }
         }
-    def nack(c: List[KinesisMetadata[F]]): F[Unit] = Applicative[F].unit
+    def nack(c: Map[String, KinesisMetadata[F]]): F[Unit] = Applicative[F].unit
   }
 
-  private def kinesisStream[F[_]: Async](config: KinesisSourceConfig): Stream[F, LowLevelEvents[List[KinesisMetadata[F]]]] = {
-    val region = Region.of(config.region.getOrElse(getRuntimeRegion))
+  private def kinesisStream[F[_]: Async](config: KinesisSourceConfig): Stream[F, LowLevelEvents[Map[String, KinesisMetadata[F]]]] = {
     val resources =
       for {
+        region <- config.region.fold(KinesisSourceConfig.getRuntimeRegion.fold(Resource.raiseError[F, Region, Throwable], Resource.pure[F, Region]))(Resource.pure)
         consumerSettings <- Resource.pure[F, KinesisConsumerSettings](
                               KinesisConsumerSettings(
                                 config.streamName,
@@ -142,7 +143,14 @@ object KinesisSource {
       }
       .chunks
       .map { chunk =>
-        LowLevelEvents(chunk.toList.map(getPayload), chunk.toList.map(toMetadata))
+        val ack = chunk
+          .toList
+          .groupBy(_.shardId)
+          .view
+          .mapValues(_.maxBy(_.sequenceNumber))
+          .mapValues(toMetadata)
+          .toMap
+        LowLevelEvents(chunk.toList.map(getPayload), ack)
       }
   }
 
@@ -154,9 +162,6 @@ object KinesisSource {
     buffer.toArray
   }
 
-  def getRuntimeRegion: String =
-    (new DefaultAwsRegionProviderChain).getRegion.id()
-
   private def scheduler[F[_]: Sync](
     kinesisClient: KinesisAsyncClient,
     dynamoDbClient: DynamoDbAsyncClient,
@@ -165,7 +170,6 @@ object KinesisSource {
     recordProcessorFactory: ShardRecordProcessorFactory
   ): F[Scheduler] =
     Sync[F].delay(UUID.randomUUID()).map { uuid =>
-      val hostname = InetAddress.getLocalHost().getCanonicalHostName()
 
       val configsBuilder =
         new ConfigsBuilder(
@@ -174,7 +178,7 @@ object KinesisSource {
           kinesisClient,
           dynamoDbClient,
           cloudWatchClient,
-          s"$hostname:$uuid",
+          s"$uuid",
           recordProcessorFactory
         )
 
@@ -199,16 +203,12 @@ object KinesisSource {
             }
           }
 
-      val metricsConfig = configsBuilder.metricsConfig.metricsLevel {
-        if (kinesisConfig.cloudwatch) MetricsLevel.DETAILED else MetricsLevel.NONE
-      }
-
       new Scheduler(
         configsBuilder.checkpointConfig,
         configsBuilder.coordinatorConfig,
         configsBuilder.leaseManagementConfig,
         configsBuilder.lifecycleConfig,
-        metricsConfig,
+        configsBuilder.metricsConfig.metricsLevel(MetricsLevel.NONE),
         configsBuilder.processorConfig,
         retrievalConfig
       )

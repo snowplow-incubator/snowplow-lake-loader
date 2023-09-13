@@ -89,4 +89,3 @@ lazy val gcpWithBiglake: Project = project
   .enablePlugins(BuildInfoPlugin, JavaAppPackaging, SnowplowDockerPlugin)
 
 ThisBuild / fork := true
-Global / onChangedBuildSource := ReloadOnSourceChanges
