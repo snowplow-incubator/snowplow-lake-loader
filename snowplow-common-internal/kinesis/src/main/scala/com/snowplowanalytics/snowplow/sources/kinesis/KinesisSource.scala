@@ -5,42 +5,37 @@
  * and you may not use this file except in compliance with the Snowplow Community License Version 1.0.
  * You may obtain a copy of the Snowplow Community License Version 1.0 at https://docs.snowplow.io/community-license-1.0
  */
-package com.snowplowanalytics.snowplow.sources
+package com.snowplowanalytics.snowplow.sources.kinesis
 
 import cats._
-import cats.implicits._
-
 import cats.effect.{Async, Resource, Sync}
-
+import cats.implicits._
 import eu.timepit.refined.types.all.PosInt
-
 import fs2.Stream
 import fs2.aws.kinesis.{CommittableRecord, Kinesis, KinesisConsumerSettings}
-
 import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
-
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.cloudwatch.CloudWatchAsyncClient
 import software.amazon.awssdk.services.dynamodb.DynamoDbAsyncClient
 import software.amazon.awssdk.services.kinesis.KinesisAsyncClient
 
 import java.net.URI
-import java.util.concurrent.Semaphore
 import java.util.{Date, UUID}
+import java.util.concurrent.Semaphore
 
 // kinesis
 import software.amazon.kinesis.common.{ConfigsBuilder, InitialPositionInStream, InitialPositionInStreamExtended}
 import software.amazon.kinesis.coordinator.Scheduler
-import software.amazon.kinesis.processor.SingleStreamTracker
 import software.amazon.kinesis.exceptions.ShutdownException
 import software.amazon.kinesis.metrics.MetricsLevel
-import software.amazon.kinesis.processor.ShardRecordProcessorFactory
+import software.amazon.kinesis.processor.{ShardRecordProcessorFactory, SingleStreamTracker}
 import software.amazon.kinesis.retrieval.fanout.FanOutConfig
 import software.amazon.kinesis.retrieval.polling.PollingConfig
 
 // snowplow
 import com.snowplowanalytics.snowplow.sources.internal.{Checkpointer, LowLevelEvents, LowLevelSource}
+import com.snowplowanalytics.snowplow.sources.SourceAndAck
 
 object KinesisSource {
 
@@ -51,8 +46,8 @@ object KinesisSource {
 
   private type KinesisCheckpointer[F[_]] = Checkpointer[F, Map[String, KinesisMetadata[F]]]
 
-  implicit class RichCommitableRecord[F[_]: Sync](val cr: CommittableRecord) extends AnyVal {
-    def toMetadata: KinesisMetadata[F] = KinesisMetadata(cr.shardId, cr.sequenceNumber, cr.isLastInShard, cr.lastRecordSemaphore, cr.checkpoint)
+  implicit class RichCommitableRecord(val cr: CommittableRecord) extends AnyVal {
+    def toMetadata[F[_]: Sync]: KinesisMetadata[F] = KinesisMetadata(cr.shardId, cr.sequenceNumber, cr.isLastInShard, cr.lastRecordSemaphore, cr.checkpoint)
   }
 
   final case class KinesisMetadata[F[_]](
@@ -146,7 +141,7 @@ object KinesisSource {
           .toList
           .groupBy(_.shardId)
           .view
-          .mapValues(_.maxBy(_.sequenceNumber).toMetadata)
+          .mapValues(_.maxBy(_.sequenceNumber).toMetadata[F])
           .toMap
         LowLevelEvents(chunk.toList.map(_.record.data()), ack)
       }
