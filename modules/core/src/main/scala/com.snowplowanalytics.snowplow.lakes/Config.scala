@@ -40,7 +40,11 @@ object Config {
     def location: URI
   }
 
-  case class Delta(location: URI) extends Target
+  case class Delta(
+    location: URI,
+    dataSkippingColumns: List[String]
+  ) extends Target
+
   sealed trait Iceberg extends Target
 
   case class IcebergSnowflake(

@@ -27,6 +27,16 @@
       # -- - For Azure blob storage, the uri should start with `abfs://`
       # -- - For local development, this can be a path to a local file e.g. `file:///path/to/events`
       "location": "abfs://container1@streeterdev1.dfs.core.windows.net/events"
+
+      # -- Atomic columns which should be brought to the "left-hand-side" of the events table, to
+      # -- enable Delta's Data Skipping feature.
+      # -- The Delta table property `delta.dataSkippingNumIndexedCols` will be set to the size of the list
+      "dataSkippingColumns": [
+        "load_tstamp"
+        "collector_tstamp"
+        "derived_tstamp"
+        "dvce_created_tstamp"
+      ]
     }
 
     "bad": {

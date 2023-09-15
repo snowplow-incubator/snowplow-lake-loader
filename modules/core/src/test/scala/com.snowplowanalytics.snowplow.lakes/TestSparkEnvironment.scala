@@ -63,7 +63,7 @@ object TestSparkEnvironment {
     Resource.raiseError[IO, Nothing, Throwable](new RuntimeException("http failure"))
   }
 
-  private def targetConfig(tmp: Path) = Config.Delta(tmp.resolve("events").toUri)
+  private def targetConfig(tmp: Path) = Config.Delta(tmp.resolve("events").toUri, List("load_tstamp", "collector_tstamp"))
 
   val appInfo = new AppInfo {
     def name = "lake-loader-test"

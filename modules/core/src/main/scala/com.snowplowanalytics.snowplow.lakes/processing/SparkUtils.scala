@@ -54,7 +54,7 @@ private[processing] object SparkUtils {
 
   private def configureSparkForTarget(builder: SparkSession.Builder, target: Config.Target): Unit =
     target match {
-      case Config.Delta(_) =>
+      case Config.Delta(_, _) =>
         builder
           .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
           .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog"): Unit
@@ -98,8 +98,9 @@ private[processing] object SparkUtils {
       .partitionedBy("load_tstamp_date", "event_name")
       .location(target.location.toString)
       .tableName("events_internal_id") // The name does not matter
+      .property("delta.dataSkippingNumIndexedCols", target.dataSkippingColumns.toSet.size.toString)
 
-    SparkSchema.atomicPlusTimestamps.foreach(builder.addColumn(_))
+    SparkSchema.fieldsForDeltaCreate(target).foreach(builder.addColumn(_))
 
     // This column needs special treatment because of the `generatedAlwaysAs` clause
     builder.addColumn {
@@ -144,7 +145,7 @@ private[processing] object SparkUtils {
         spark.sql(s"CREATE DATABASE IF NOT EXISTS $db"): Unit
         spark.sql(s"""
       CREATE TABLE IF NOT EXISTS $name
-      (${SparkSchema.ddlForTableCreate})
+      (${SparkSchema.ddlForIcebergCreate})
       USING ICEBERG
       PARTITIONED BY (date(load_tstamp), event_name)
       TBLPROPERTIES($tblProperties)

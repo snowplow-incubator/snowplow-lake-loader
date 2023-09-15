@@ -11,6 +11,7 @@ import org.apache.spark.sql.types._
 
 import com.snowplowanalytics.iglu.schemaddl.parquet.{Field, Type}
 import com.snowplowanalytics.snowplow.loaders.{AtomicFields, TypedTabledEntity}
+import com.snowplowanalytics.snowplow.lakes.Config
 
 private[processing] object SparkSchema {
 
@@ -40,12 +41,21 @@ private[processing] object SparkSchema {
    * Ordered spark Fields corresponding to the output of this loader
    *
    * Includes fields added by the loader, e.g. `load_tstamp`
+   *
+   * @param config
+   *   The Delta config, whose `dataSkippingColumn` param tells us which columns must go first in
+   *   the table definition. See Delta's data skipping feature to understand why.
    */
-  def atomicPlusTimestamps: List[StructField] =
-    atomic :+ StructField("load_tstamp", TimestampType, nullable = false)
+  def fieldsForDeltaCreate(config: Config.Delta): List[StructField] = {
+    val (withStats, noStats) = AtomicFields.withLoadTstamp.partition { f =>
+      config.dataSkippingColumns.contains(f.name)
+    }
+    (withStats ::: noStats).map(asSparkField)
+  }
 
   /** String representation of the atomic schema for creating a table using SQL dialiect */
-  def ddlForTableCreate: String = StructType(atomicPlusTimestamps).toDDL
+  def ddlForIcebergCreate: String =
+    StructType(AtomicFields.withLoadTstamp.map(asSparkField)).toDDL
 
   private def asSparkField(ddlField: Field): StructField = {
     val normalizedName = Field.normalize(ddlField).name
