@@ -1,3 +1,8 @@
+Version 0.1.2 (2023-09-18)
+--------------------------
+Delta: Support data skipping on tstamp columns (#9)
+Retry writing delta after concurrent modification exceptions (#7)
+
 Version 0.1.1 (2023-09-13)
 --------------------------
 Add license file to packaged jar (#5)
