@@ -7,12 +7,11 @@
  */
 package com.snowplowanalytics.snowplow.sources.kinesis
 
+import cats.implicits._
 import io.circe._
 import io.circe.generic.semiauto._
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.regions.providers.DefaultAwsRegionProviderChain
-
-import scala.util.Try
 
 import java.net.URI
 import java.time.Instant
@@ -20,7 +19,6 @@ import java.time.Instant
 case class KinesisSourceConfig(
   appName: String,
   streamName: String,
-  region: Option[Region],
   initialPosition: KinesisSourceConfig.InitPosition,
   retrievalMode: KinesisSourceConfig.Retrieval,
   bufferSize: Int,
@@ -32,12 +30,7 @@ case class KinesisSourceConfig(
 object KinesisSourceConfig {
 
   def getRuntimeRegion: Either[Throwable, Region] =
-    Try((new DefaultAwsRegionProviderChain).getRegion).toEither
-
-  implicit val regionDecoder: Decoder[Region] =
-    Decoder
-      .decodeString
-      .emap { s => Try(Region.of(s)).toEither.left.map(_.toString) }
+    Either.catchNonFatal((new DefaultAwsRegionProviderChain).getRegion)
 
   sealed trait InitPosition
 

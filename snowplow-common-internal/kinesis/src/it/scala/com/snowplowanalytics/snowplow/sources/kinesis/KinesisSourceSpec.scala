@@ -7,47 +7,59 @@
  */
 package com.snowplowanalytics.snowplow.sources.kinesis
 
-import cats.effect.{IO, Ref}
-import cats.effect.unsafe.implicits.global
-
-import org.specs2.mutable.Specification
-import org.specs2.specification.BeforeAfterAll
+import cats.effect.{IO, Ref, Resource}
+import cats.effect.testing.specs2.CatsResource
 
 import scala.annotation.nowarn
-import scala.concurrent.duration.DurationInt
-
-import Containers._
-import Utils._
-
+import scala.concurrent.duration.{DurationInt, FiniteDuration}
 import com.snowplowanalytics.snowplow.sources.EventProcessingConfig
 import com.snowplowanalytics.snowplow.sources.EventProcessingConfig.NoWindowing
+import org.specs2.mutable.SpecificationLike
+import org.testcontainers.containers.localstack.LocalStackContainer
+import software.amazon.awssdk.services.kinesis.KinesisAsyncClient
+import Utils._
+import Resources._
 
 @nowarn("msg=unused value of type org.specs2.specification.core.Fragment")
-class KinesisSourceSpec extends Specification with BeforeAfterAll {
+class KinesisSourceSpec
+    extends CatsResource[IO, (LocalStackContainer, KinesisAsyncClient, String => KinesisSourceConfig)]
+    with SpecificationLike {
+  import KinesisSourceSpec._
 
-  def beforeAll(): Unit = localstack.start()
-  def afterAll(): Unit  = localstack.stop()
+  override val Timeout: FiniteDuration = 3.minutes
+
+  /** Resources which are shared across tests */
+  override val resource: Resource[IO, (LocalStackContainer, KinesisAsyncClient, String => KinesisSourceConfig)] =
+    Resource.make(
+      for {
+        region <- IO.fromEither(KinesisSourceConfig.getRuntimeRegion)
+        lsContainer = prepareLocalstackContainer(region, KINESIS_INITIALIZE_STREAMS)
+        localstack  = startLocalstack(lsContainer)
+        kinesisClient <- getKinesisClient(localstack.getEndpoint, region)
+      } yield (localstack, kinesisClient, getKinesisConfig(localstack.getEndpoint)(_))
+    )(res => IO(res._1.stop()))
 
   "Kinesis source" should {
-    "read from input stream" in {
+    "read from input stream" in withResource { case (_, kinesisClient, getKinesisConfig) =>
       val testPayload = "test-payload"
 
-      val prog = for {
-        region <- awsRegion
+      for {
         refProcessed <- Ref[IO].of[List[String]](Nil)
-        kinesisClient <- getKinesisClient(localstack.getEndpoint, region)
-        _ <- putDataToKinesis(kinesisClient, Containers.testStream1Name, testPayload)
+        _ <- putDataToKinesis(kinesisClient, testStream1Name, testPayload)
         processingConfig = new EventProcessingConfig(NoWindowing)
-        kinesisConfig    = getKinesisConfig(region)
+        kinesisConfig    = getKinesisConfig(testStream1Name)
         sourceAndAck     = KinesisSource.build[IO](kinesisConfig).stream(processingConfig, testProcessor(refProcessed))
         fiber <- sourceAndAck.compile.drain.start
         _ <- IO.sleep(2.minutes)
         processed <- refProcessed.get
         _ <- fiber.cancel
-      } yield processed must contain(testPayload)
-
-      prog.unsafeRunSync()
-
+      } yield processed.toSet must beEqualTo(Set(testPayload))
     }
   }
+}
+
+object KinesisSourceSpec {
+  val testStream1Name = "test-stream-1"
+  val KINESIS_INITIALIZE_STREAMS: String =
+    List(s"$testStream1Name:1").mkString(",")
 }

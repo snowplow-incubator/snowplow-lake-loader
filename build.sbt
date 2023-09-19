@@ -28,7 +28,12 @@ lazy val kinesis: Project = project
   .settings(BuildSettings.commonSettings)
   .settings(libraryDependencies ++= Dependencies.kinesisDependencies)
   .dependsOn(streams)
-  .settings(Defaults.itSettings)
+  .settings(
+    Defaults.itSettings,
+    /** AWS_REGION=eu-central-1 is detected by the lib & integration test suite
+     * which follows the same region resolution mechanism as the lib */
+    IntegrationTest / envVars := Map("AWS_REGION" -> "eu-central-1")
+  )
   .configs(IntegrationTest)
 
 lazy val kafka: Project = project

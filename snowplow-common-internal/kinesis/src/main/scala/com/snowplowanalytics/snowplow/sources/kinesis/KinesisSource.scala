@@ -113,7 +113,7 @@ object KinesisSource {
   private def kinesisStream[F[_]: Async](config: KinesisSourceConfig): Stream[F, LowLevelEvents[Map[String, KinesisMetadata[F]]]] = {
     val resources =
       for {
-        region <- config.region.fold(KinesisSourceConfig.getRuntimeRegion.fold(Resource.raiseError[F, Region, Throwable], Resource.pure[F, Region]))(Resource.pure)
+        region <- KinesisSourceConfig.getRuntimeRegion.fold(Resource.raiseError[F, Region, Throwable], Resource.pure[F, Region])
         consumerSettings <- Resource.pure[F, KinesisConsumerSettings](
                               KinesisConsumerSettings(
                                 config.streamName,

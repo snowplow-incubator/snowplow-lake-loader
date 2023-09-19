@@ -7,35 +7,15 @@
  */
 package com.snowplowanalytics.snowplow.sources.kinesis
 
-import cats.effect.{IO, Ref}
-import com.snowplowanalytics.snowplow.sources.{EventProcessor, TokenedEvents}
+import cats.effect.IO
 import software.amazon.awssdk.core.SdkBytes
-import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.kinesis.KinesisAsyncClient
 import software.amazon.awssdk.services.kinesis.model.{PutRecordRequest, PutRecordResponse}
 
 import java.net.URI
-import java.nio.charset.StandardCharsets
 import java.util.UUID
 
 object Utils {
-  val awsRegion: IO[Region] = IO(Region.of(Containers.localstack.getRegion))
-
-  def testProcessor(ref: Ref[IO, List[String]]): EventProcessor[IO] =
-    _.evalMap { case TokenedEvents(events, token) =>
-      for {
-        _ <- ref.update(_ ::: events.map(byteBuffer => StandardCharsets.UTF_8.decode(byteBuffer).toString))
-      } yield token
-    }
-
-  def getKinesisClient(endpoint: URI, region: Region): IO[KinesisAsyncClient] =
-    IO.blocking(
-      KinesisAsyncClient
-        .builder()
-        .endpointOverride(endpoint)
-        .region(region)
-        .build()
-    )
 
   def putDataToKinesis(
     client: KinesisAsyncClient,
@@ -52,15 +32,14 @@ object Utils {
     IO.blocking(client.putRecord(record).get())
   }
 
-  def getKinesisConfig(region: Region): KinesisSourceConfig = KinesisSourceConfig(
+  def getKinesisConfig(endpoint: URI)(streamName: String): KinesisSourceConfig = KinesisSourceConfig(
     UUID.randomUUID().toString,
-    Containers.testStream1Name,
-    Some(region),
+    streamName,
     KinesisSourceConfig.InitPosition.TrimHorizon,
     KinesisSourceConfig.Retrieval.Polling(1),
     1,
-    Some(Containers.localstack.getEndpoint),
-    Some(Containers.localstack.getEndpoint),
-    Some(Containers.localstack.getEndpoint)
+    Some(endpoint),
+    Some(endpoint),
+    Some(endpoint)
   )
 }
