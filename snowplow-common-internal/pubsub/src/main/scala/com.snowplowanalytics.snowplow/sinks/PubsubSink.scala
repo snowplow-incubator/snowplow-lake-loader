@@ -19,7 +19,6 @@ import com.google.pubsub.v1.{ProjectTopicName, PubsubMessage}
 import org.threeten.bp.{Duration => ThreetenDuration}
 
 import java.util.UUID
-import scala.concurrent.duration.FiniteDuration
 import scala.jdk.CollectionConverters._
 
 import com.snowplowanalytics.snowplow.pubsub.FutureInterop
@@ -43,7 +42,7 @@ object PubsubSink {
         fut <- Async[F].delay(publisher.publish(message))
         _ <- FutureInterop.fromFuture[F, String](fut)
       } yield ()
-    }
+    } *> Async[F].delay(publisher.publishAllOutstanding)
 
   private def mkPublisher[F[_]: Sync](config: PubsubSinkConfig): Resource[F, Publisher] = {
     val topic = ProjectTopicName.of(config.topic.projectId, config.topic.topicId)
@@ -51,7 +50,7 @@ object PubsubSink {
     val batchSettings = BatchingSettings.newBuilder
       .setElementCountThreshold(config.batchSize)
       .setRequestByteThreshold(config.requestByteThreshold)
-      .setDelayThreshold(convertDuration(config.delayThreshold))
+      .setDelayThreshold(ThreetenDuration.ofNanos(Long.MaxValue))
 
     val make = Sync[F].delay {
       Publisher
@@ -66,7 +65,4 @@ object PubsubSink {
       }
     }
   }
-
-  private def convertDuration(d: FiniteDuration): ThreetenDuration =
-    ThreetenDuration.ofMillis(d.toMillis)
 }
