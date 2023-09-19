@@ -94,12 +94,22 @@ object PubsubSource {
           LowLevelEvents(events, acks)
         }
         .evalTap { case LowLevelEvents(events, _) =>
-          val numBytes = events.map(_.size).sum
-          semaphore.releaseN(numBytes.toLong)
+          val numPermits = events.map(e => permitsFor(config, e.size)).sum
+          semaphore.releaseN(numPermits)
         }
         .interruptWhen(sig)
     }
   }
+
+  /**
+   * Number of semaphore permits needed to write an event to the buffer.
+   *
+   *   - For small/medium events, this equals the size of the event in bytes.
+   *   - For large events, there are not enough permits available for the event in bytes, so return
+   *     the number of available permits.
+   */
+  private def permitsFor(config: PubsubSourceConfig, bytes: Int): Long =
+    Math.min(config.bufferMaxBytes, bytes.toLong)
 
   private def errorListener[F[_]: Sync](dispatcher: Dispatcher[F], sig: DeferredSink[F, Either[Throwable, Unit]]): ApiService.Listener =
     new ApiService.Listener {
@@ -118,7 +128,7 @@ object PubsubSource {
     sig: Deferred[F, Either[Throwable, Unit]]
   ): Stream[F, Unit] = {
     val name = ProjectSubscriptionName.of(config.subscription.projectId, config.subscription.subscriptionId)
-    val receiver = messageReceiver(queue, dispatcher, semaphore, sig)
+    val receiver = messageReceiver(config, queue, dispatcher, semaphore, sig)
 
     for {
       executor <- Stream.bracket(Sync[F].delay(scheduledExecutorService))(s => Sync[F].delay(s.shutdown()))
@@ -169,6 +179,7 @@ object PubsubSource {
   }
 
   private def messageReceiver[F[_]: Async](
+    config: PubsubSourceConfig,
     queue: QueueSink[F, SingleMessage[F]],
     dispatcher: Dispatcher[F],
     semaphore: Semaphore[F],
@@ -176,7 +187,7 @@ object PubsubSource {
   ): MessageReceiverWithAckResponse =
     new MessageReceiverWithAckResponse {
       def receiveMessage(message: PubsubMessage, ackReply: AckReplyConsumerWithResponse): Unit = {
-        val put = semaphore.acquireN(message.getData.size.toLong) *>
+        val put = semaphore.acquireN(permitsFor(config, message.getData.size)) *>
           queue.offer(SingleMessage(message.getData.toByteArray, ackReply))
 
         val io = put

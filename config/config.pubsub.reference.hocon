@@ -9,7 +9,7 @@
     # -- How many bytes can be buffered by the loader app before blocking the pubsub client library
     # -- from fetching more events.
     # -- This is a balance between memory usage vs how efficiently the app can operate.  The default value works well.
-    "bufferMaxBytes": 1000000
+    "bufferMaxBytes": 10000000
 
     # -- For how long the pubsub client library will continue to re-extend the ack deadline of an unprocessed event.
     "maxAckExtensionPeriod": "1 hour"
