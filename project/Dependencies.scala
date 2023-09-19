@@ -41,10 +41,11 @@ object Dependencies {
     val sentry   = "6.25.2"
 
     // Snowplow
-    val schemaDdl  = "0.21.0-M1"
-    val badrows    = "2.2.0"
-    val igluClient = "3.0.0"
-    val tracker    = "2.0.0"
+    val schemaDdl    = "0.21.0-M1"
+    val badrows      = "2.2.0"
+    val igluClient   = "3.0.0"
+    val tracker      = "2.0.0"
+    val analyticsSdk = "3.1.0"
 
     // Transitive overrides
     val protobuf     = "3.24.2"
@@ -97,16 +98,13 @@ object Dependencies {
   val thrift            = "org.apache.thrift"          % "libthrift"                          % V.thrift
   val jackson           = "com.fasterxml.jackson.core" % "jackson-databind"                   % V.jackson
 
-  // snowplow: Note jackson-databind 2.14.x is incompatible with Spark
   val badrows           = "com.snowplowanalytics"      %% "snowplow-badrows"                      % V.badrows
   val tracker           = "com.snowplowanalytics"      %% "snowplow-scala-tracker-core"           % V.tracker
   val trackerEmit       = "com.snowplowanalytics"      %% "snowplow-scala-tracker-emitter-http4s" % V.tracker
-  val schemaDdl         = ("com.snowplowanalytics"      %% "schema-ddl"               % V.schemaDdl)
-    .exclude("com.fasterxml.jackson.core", "jackson-databind")
-  val igluClient        = ("com.snowplowanalytics"      %% "iglu-scala-client"        % V.igluClient)
-    .exclude("com.fasterxml.jackson.core", "jackson-databind")
-  val igluClientHttp4s  = ("com.snowplowanalytics"      %% "iglu-scala-client-http4s" % V.igluClient)
-    .exclude("com.fasterxml.jackson.core", "jackson-databind")
+  val schemaDdl         = "com.snowplowanalytics"      %% "schema-ddl"                            % V.schemaDdl
+  val igluClient        = "com.snowplowanalytics"      %% "iglu-scala-client"                     % V.igluClient
+  val igluClientHttp4s  = "com.snowplowanalytics"      %% "iglu-scala-client-http4s"              % V.igluClient
+  val analyticsSdk      = "com.snowplowanalytics"      %% "snowplow-scala-analytics-sdk"          % V.analyticsSdk
 
   // tests
   val specs2            = "org.specs2"                 %% "specs2-core"                % V.specs2            % Test
@@ -150,6 +148,7 @@ object Dependencies {
     log4cats,
     tracker,
     trackerEmit,
+    analyticsSdk,
     specs2,
     catsEffectSpecs2,
     slf4j % Test,
