@@ -1,3 +1,11 @@
+Version 0.1.3 (2023-09-21)
+--------------------------
+Improvements to example config files (#14)
+Use TIMESTAMP_MICROS as parquet timestamp type (#13)
+Bump scala analytics sdk to 3.1.0 (#12)
+Remove delayThreshold as a config option of pubsub sink (#11)
+Fix GCP app hanging when event size exceeds buffer size (#10)
+
 Version 0.1.2 (2023-09-18)
 --------------------------
 Delta: Support data skipping on tstamp columns (#9)
