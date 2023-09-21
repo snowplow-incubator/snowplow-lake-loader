@@ -147,6 +147,7 @@ object Dependencies {
     circeConfig,
     circeGeneric,
     circeGenericExtra,
+    "io.circe"         %% "circe-parser" % V.circe,
     catsEffectTestingIt,
     catsEffectSpecs2It,
     localstackIt,
