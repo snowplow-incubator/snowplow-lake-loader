@@ -160,7 +160,7 @@ object Processing {
             val stringified = StandardCharsets.UTF_8.decode(byteBuffer).toString
             Event
               .parse(stringified)
-              .map(event => Parsed(event, byteBuffer.array().length, TabledEntity.forEvent(event)))
+              .map(event => Parsed(event, byteBuffer.capacity(), TabledEntity.forEvent(event)))
               .leftMap { failure =>
                 val payload = BadRowRawPayload(stringified)
 

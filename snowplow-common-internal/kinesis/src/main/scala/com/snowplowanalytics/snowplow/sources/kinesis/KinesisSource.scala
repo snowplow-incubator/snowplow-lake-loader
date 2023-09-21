@@ -10,7 +10,7 @@ package com.snowplowanalytics.snowplow.sources.kinesis
 import cats._
 import cats.effect.{Async, Resource, Sync}
 import cats.implicits._
-import eu.timepit.refined.types.all.PosInt
+
 import fs2.Stream
 import fs2.aws.kinesis.{CommittableRecord, Kinesis, KinesisConsumerSettings}
 import org.typelevel.log4cats.Logger
@@ -47,7 +47,8 @@ object KinesisSource {
   private type KinesisCheckpointer[F[_]] = Checkpointer[F, Map[String, KinesisMetadata[F]]]
 
   implicit class RichCommitableRecord(val cr: CommittableRecord) extends AnyVal {
-    def toMetadata[F[_]: Sync]: KinesisMetadata[F] = KinesisMetadata(cr.shardId, cr.sequenceNumber, cr.isLastInShard, cr.lastRecordSemaphore, cr.checkpoint)
+    def toMetadata[F[_]: Sync]: KinesisMetadata[F] =
+      KinesisMetadata(cr.shardId, cr.sequenceNumber, cr.isLastInShard, cr.lastRecordSemaphore, cr.checkpoint)
   }
 
   final case class KinesisMetadata[F[_]](
@@ -77,8 +78,7 @@ object KinesisSource {
 
     val empty: Map[String, KinesisMetadata[F]] = Map.empty
     def ack(c: Map[String, KinesisMetadata[F]]): F[Unit] =
-      c.values
-        .toList
+      c.values.toList
         .parTraverse_ { metadata =>
           metadata.ack
             .recoverWith {
@@ -119,7 +119,7 @@ object KinesisSource {
                                 config.streamName,
                                 config.appName,
                                 region,
-                                bufferSize = PosInt.unsafeFrom(config.bufferSize)
+                                bufferSize = config.bufferSize
                               )
                             )
         kinesisClient <- mkKinesisClient[F](region, config.customEndpoint)
@@ -137,8 +137,7 @@ object KinesisSource {
       }
       .chunks
       .map { chunk =>
-        val ack = chunk
-          .toList
+        val ack = chunk.toList
           .groupBy(_.shardId)
           .view
           .mapValues(_.maxBy(_.sequenceNumber).toMetadata[F])
@@ -155,7 +154,6 @@ object KinesisSource {
     recordProcessorFactory: ShardRecordProcessorFactory
   ): F[Scheduler] =
     Sync[F].delay(UUID.randomUUID()).map { uuid =>
-
       val configsBuilder =
         new ConfigsBuilder(
           kinesisConfig.streamName,

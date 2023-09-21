@@ -146,6 +146,7 @@ object Dependencies {
     cloudwatchSdk2,
     circeConfig,
     circeGeneric,
+    circeGenericExtra,
     catsEffectTestingIt,
     catsEffectSpecs2It,
     localstackIt,

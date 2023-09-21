@@ -8,8 +8,10 @@
 package com.snowplowanalytics.snowplow.sources.kinesis
 
 import cats.implicits._
+import eu.timepit.refined.types.all.PosInt
 import io.circe._
-import io.circe.generic.semiauto._
+import io.circe.generic.extras.semiauto.deriveConfiguredDecoder
+import io.circe.generic.extras.Configuration
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.regions.providers.DefaultAwsRegionProviderChain
 
@@ -21,13 +23,21 @@ case class KinesisSourceConfig(
   streamName: String,
   initialPosition: KinesisSourceConfig.InitPosition,
   retrievalMode: KinesisSourceConfig.Retrieval,
-  bufferSize: Int,
+  bufferSize: PosInt,
   customEndpoint: Option[URI],
   dynamodbCustomEndpoint: Option[URI],
   cloudwatchCustomEndpoint: Option[URI]
 )
 
 object KinesisSourceConfig {
+
+  implicit val config: Configuration = Configuration.default.withDefaults
+
+  implicit val posIntDecoder: Decoder[PosInt] =
+    Decoder.decodeInt.emap { int =>
+      if (int > 0) PosInt.from(int)
+      else s"Positive integer expected but [$int] is provided".asLeft[PosInt]
+    }
 
   def getRuntimeRegion: Either[Throwable, Region] =
     Either.catchNonFatal((new DefaultAwsRegionProviderChain).getRegion)
@@ -41,7 +51,7 @@ object KinesisSourceConfig {
 
     case class AtTimestamp(timestamp: Instant) extends InitPosition
 
-    implicit val decoder: Decoder[InitPosition] = deriveDecoder[InitPosition]
+    implicit val decoder: Decoder[InitPosition] = deriveConfiguredDecoder[InitPosition]
   }
 
   sealed trait Retrieval
@@ -51,8 +61,8 @@ object KinesisSourceConfig {
 
     case object FanOut extends Retrieval
 
-    implicit val decoder: Decoder[Retrieval] = deriveDecoder[Retrieval]
+    implicit val decoder: Decoder[Retrieval] = deriveConfiguredDecoder[Retrieval]
   }
 
-  implicit val decoder: Decoder[KinesisSourceConfig] = deriveDecoder[KinesisSourceConfig]
+  implicit val decoder: Decoder[KinesisSourceConfig] = deriveConfiguredDecoder[KinesisSourceConfig]
 }

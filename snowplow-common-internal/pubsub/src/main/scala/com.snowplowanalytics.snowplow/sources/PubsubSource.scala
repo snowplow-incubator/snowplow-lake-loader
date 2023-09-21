@@ -96,7 +96,7 @@ object PubsubSource {
           LowLevelEvents(events, acks)
         }
         .evalTap { case LowLevelEvents(events, _) =>
-          val numBytes = events.map(_.array().length).sum
+          val numBytes = events.map(_.limit()).sum
           semaphore.releaseN(numBytes.toLong)
         }
         .interruptWhen(sig)
@@ -180,7 +180,7 @@ object PubsubSource {
     new MessageReceiverWithAckResponse {
       def receiveMessage(message: PubsubMessage, ackReply: AckReplyConsumerWithResponse): Unit = {
         val put = semaphore.acquireN(message.getData.size.toLong) *>
-          queue.offer(SingleMessage(ByteBuffer.wrap(message.getData.toByteArray), ackReply))
+          queue.offer(SingleMessage(message.getData.asReadOnlyByteBuffer(), ackReply))
 
         val io = put.race(sig.get)
           .flatMap {
