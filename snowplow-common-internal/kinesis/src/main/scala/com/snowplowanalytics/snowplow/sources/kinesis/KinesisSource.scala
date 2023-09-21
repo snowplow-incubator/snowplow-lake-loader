@@ -19,9 +19,10 @@ import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.cloudwatch.CloudWatchAsyncClient
 import software.amazon.awssdk.services.dynamodb.DynamoDbAsyncClient
 import software.amazon.awssdk.services.kinesis.KinesisAsyncClient
+import software.amazon.kinesis.common.{InitialPositionInStream, InitialPositionInStreamExtended}
 
 import java.net.URI
-import java.util.UUID
+import java.util.{Date, UUID}
 import java.util.concurrent.Semaphore
 
 // kinesis
@@ -146,6 +147,15 @@ object KinesisSource {
       }
   }
 
+  private def initialPositionOf(config: KinesisSourceConfig.InitialPosition): InitialPositionInStreamExtended =
+    config match {
+      case KinesisSourceConfig.InitialPosition.Latest => InitialPositionInStreamExtended.newInitialPosition(InitialPositionInStream.LATEST)
+      case KinesisSourceConfig.InitialPosition.TrimHorizon =>
+        InitialPositionInStreamExtended.newInitialPosition(InitialPositionInStream.TRIM_HORIZON)
+      case KinesisSourceConfig.InitialPosition.AtTimestamp(instant) =>
+        InitialPositionInStreamExtended.newInitialPositionAtTimestamp(Date.from(instant))
+    }
+
   private def scheduler[F[_]: Sync](
     kinesisClient: KinesisAsyncClient,
     dynamoDbClient: DynamoDbAsyncClient,
@@ -167,7 +177,7 @@ object KinesisSource {
 
       val retrievalConfig =
         configsBuilder.retrievalConfig
-          .streamTracker(new SingleStreamTracker(kinesisConfig.streamName, kinesisConfig.initialPosition))
+          .streamTracker(new SingleStreamTracker(kinesisConfig.streamName, initialPositionOf(kinesisConfig.initialPosition)))
           .retrievalSpecificConfig {
             kinesisConfig.retrievalMode match {
               case KinesisSourceConfig.Retrieval.FanOut =>

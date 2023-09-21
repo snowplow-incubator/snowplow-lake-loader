@@ -69,6 +69,7 @@ object Dependencies {
   val circeConfig       = "io.circe"         %% "circe-config"         % V.circeConfig
   val circeGeneric      = "io.circe"         %% "circe-generic"        % V.circe
   val circeGenericExtra = "io.circe"         %% "circe-generic-extras" % V.circe
+  val circeLiteral      = "io.circe"         %% "circe-literal"        % V.circe
   val betterMonadicFor  = "com.olegpy"       %% "better-monadic-for"   % V.betterMonadicFor
 
   // streams
@@ -148,10 +149,12 @@ object Dependencies {
     circeGeneric,
     circeGenericExtra,
     "io.circe"         %% "circe-parser" % V.circe,
+    circeLiteral % Test,
     catsEffectTestingIt,
     catsEffectSpecs2It,
     localstackIt,
-    slf4jIt
+    slf4jIt,
+    specs2,
   )
 
   val kafkaDependencies = Seq(

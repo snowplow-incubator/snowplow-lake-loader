@@ -14,16 +14,14 @@ import io.circe.generic.extras.semiauto.deriveConfiguredDecoder
 import io.circe.generic.extras.Configuration
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.regions.providers.DefaultAwsRegionProviderChain
-import software.amazon.kinesis.common.{InitialPositionInStream, InitialPositionInStreamExtended}
 
 import java.net.URI
 import java.time.Instant
-import java.util.Date
 
 case class KinesisSourceConfig(
   appName: String,
   streamName: String,
-  initialPosition: InitialPositionInStreamExtended,
+  initialPosition: KinesisSourceConfig.InitialPosition,
   retrievalMode: KinesisSourceConfig.Retrieval,
   bufferSize: PosInt,
   customEndpoint: Option[URI],
@@ -32,8 +30,6 @@ case class KinesisSourceConfig(
 )
 
 object KinesisSourceConfig {
-
-  implicit val config: Configuration = Configuration.default.withDefaults
 
   implicit val posIntDecoder: Decoder[PosInt] =
     Decoder.decodeInt.emap { int =>
@@ -44,57 +40,31 @@ object KinesisSourceConfig {
   def getRuntimeRegion: Either[Throwable, Region] =
     Either.catchNonFatal((new DefaultAwsRegionProviderChain).getRegion)
 
-  case class InitPositionRaw(`type`: String, timestamp: Option[Instant])
-  implicit val initPositionRawDecoder: Decoder[InitPositionRaw] = deriveConfiguredDecoder[InitPositionRaw]
+  sealed trait InitialPosition
 
-  implicit val initPositionDecoder: Decoder[InitialPositionInStreamExtended] =
-    Decoder.instance { cur =>
-      for {
-        rawParsed <- cur.as[InitPositionRaw].map(raw => raw.copy(`type` = raw.`type`.toUpperCase))
-        initPosition <- rawParsed match {
-                          case InitPositionRaw("TRIM_HORIZON", _) =>
-                            InitialPositionInStreamExtended.newInitialPosition(InitialPositionInStream.TRIM_HORIZON).asRight
-                          case InitPositionRaw("LATEST", _) =>
-                            InitialPositionInStreamExtended.newInitialPosition(InitialPositionInStream.LATEST).asRight
-                          case InitPositionRaw("AT_TIMESTAMP", Some(timestamp)) =>
-                            InitialPositionInStreamExtended.newInitialPositionAtTimestamp(Date.from(timestamp)).asRight
-                          case other =>
-                            DecodingFailure(
-                              s"Initial position $other is not supported. Possible types are TRIM_HORIZON, LATEST and AT_TIMESTAMP (must provide timestamp field)",
-                              cur.history
-                            ).asLeft
-                        }
-      } yield initPosition
-    }
+  object InitialPosition {
+    case object Latest extends InitialPosition
+    case object TrimHorizon extends InitialPosition
+    case class AtTimestamp(timestamp: Instant) extends InitialPosition
+
+    private[KinesisSourceConfig] def decoder(implicit c: Configuration) = deriveConfiguredDecoder[InitialPosition]
+  }
 
   sealed trait Retrieval
 
   object Retrieval {
     case class Polling(maxRecords: Int) extends Retrieval
-
     case object FanOut extends Retrieval
 
-    case class RetrievalRaw(`type`: String, maxRecords: Option[Int])
-    implicit val retrievalRawDecoder: Decoder[RetrievalRaw] = deriveConfiguredDecoder[RetrievalRaw]
-
-    implicit val retrievalDecoder: Decoder[Retrieval] =
-      Decoder.instance { cur =>
-        for {
-          rawParsed <- cur.as[RetrievalRaw].map(raw => raw.copy(`type` = raw.`type`.toUpperCase))
-          retrieval <- rawParsed match {
-                         case RetrievalRaw("POLLING", Some(maxRecords)) =>
-                           Polling(maxRecords).asRight
-                         case RetrievalRaw("FANOUT", _) =>
-                           FanOut.asRight
-                         case other =>
-                           DecodingFailure(
-                             s"Retrieval mode $other is not supported. Possible types are FanOut and Polling (must provide maxRecords field)",
-                             cur.history
-                           ).asLeft
-                       }
-        } yield retrieval
-      }
+    private[KinesisSourceConfig] def decoder(implicit c: Configuration) = deriveConfiguredDecoder[Retrieval]
   }
 
-  implicit val decoder: Decoder[KinesisSourceConfig] = deriveConfiguredDecoder[KinesisSourceConfig]
+  implicit val decoder: Decoder[KinesisSourceConfig] = {
+    implicit val config: Configuration = Configuration.default.withDiscriminator("type")
+    val alternativeConfig              = config.withScreamingSnakeCaseConstructorNames
+
+    implicit val initPosDecoder = InitialPosition.decoder(config).or(InitialPosition.decoder(alternativeConfig))
+    implicit val retrieval      = Retrieval.decoder(config).or(Retrieval.decoder(alternativeConfig))
+    deriveConfiguredDecoder[KinesisSourceConfig]
+  }
 }
