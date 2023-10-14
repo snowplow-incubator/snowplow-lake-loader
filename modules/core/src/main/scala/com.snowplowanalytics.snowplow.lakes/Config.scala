@@ -12,12 +12,14 @@ import io.circe.Decoder
 import io.circe.generic.extras.semiauto._
 import io.circe.generic.extras.Configuration
 import io.circe.config.syntax._
+import com.comcast.ip4s.Port
 
 import java.net.URI
 import scala.concurrent.duration.FiniteDuration
 
 import com.snowplowanalytics.iglu.client.resolver.Resolver.ResolverConfig
-import com.snowplowanalytics.snowplow.loaders.{Metrics => CommonMetrics, Telemetry}
+import com.snowplowanalytics.snowplow.runtime.{Metrics => CommonMetrics, Telemetry}
+import com.snowplowanalytics.snowplow.runtime.HealthProbe.decoders._
 
 case class Config[+Source, +Sink](
   input: Source,
@@ -80,25 +82,6 @@ object Config {
     statsd: Option[CommonMetrics.StatsdConfig]
   )
 
-  private case class StatsdUnresolved(
-    hostname: Option[String],
-    port: Int,
-    tags: Map[String, String],
-    period: FiniteDuration,
-    prefix: String
-  )
-
-  private object Statsd {
-
-    def resolve(statsd: StatsdUnresolved): Option[CommonMetrics.StatsdConfig] =
-      statsd match {
-        case StatsdUnresolved(Some(hostname), port, tags, period, prefix) =>
-          Some(CommonMetrics.StatsdConfig(hostname, port, tags, period, prefix))
-        case StatsdUnresolved(None, _, _, _, _) =>
-          None
-      }
-  }
-
   case class SentryM[M[_]](
     dsn: M[String],
     tags: Map[String, String]
@@ -106,18 +89,19 @@ object Config {
 
   type Sentry = SentryM[Id]
 
+  case class HealthProbe(port: Port, unhealthyLatency: FiniteDuration)
+
   case class Monitoring(
     metrics: Metrics,
-    sentry: Option[Sentry]
+    sentry: Option[Sentry],
+    healthProbe: HealthProbe
   )
 
   implicit def decoder[Source: Decoder, Sink: Decoder]: Decoder[Config[Source, Sink]] = {
     implicit val configuration = Configuration.default.withDiscriminator("type")
-    implicit val target = deriveConfiguredDecoder[Target]
-    implicit val output = deriveConfiguredDecoder[Output[Sink]]
-    implicit val spark = deriveConfiguredDecoder[Spark]
-    implicit val telemetry = deriveConfiguredDecoder[Telemetry.Config]
-    implicit val statsdDecoder = deriveConfiguredDecoder[StatsdUnresolved].map(Statsd.resolve(_))
+    implicit val target        = deriveConfiguredDecoder[Target]
+    implicit val output        = deriveConfiguredDecoder[Output[Sink]]
+    implicit val spark         = deriveConfiguredDecoder[Spark]
     implicit val sentryDecoder = deriveConfiguredDecoder[SentryM[Option]]
       .map[Option[Sentry]] {
         case SentryM(Some(dsn), tags) =>
@@ -126,7 +110,8 @@ object Config {
           None
       }
     implicit val metricsDecoder = deriveConfiguredDecoder[Metrics]
-    implicit val monitoringDecoder = deriveConfiguredDecoder[Monitoring]
+    implicit val healthProbeDecoder = deriveConfiguredDecoder[HealthProbe]
+    implicit val monitoringDecoder  = deriveConfiguredDecoder[Monitoring]
     deriveConfiguredDecoder[Config[Source, Sink]]
   }
 

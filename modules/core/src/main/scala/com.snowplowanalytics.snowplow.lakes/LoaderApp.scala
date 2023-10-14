@@ -16,7 +16,7 @@ import scala.concurrent.duration.DurationInt
 
 import com.snowplowanalytics.snowplow.sources.SourceAndAck
 import com.snowplowanalytics.snowplow.sinks.Sink
-import com.snowplowanalytics.snowplow.loaders.AppInfo
+import com.snowplowanalytics.snowplow.runtime.AppInfo
 
 abstract class LoaderApp[SourceConfig: Decoder, SinkConfig: Decoder](
   info: AppInfo
@@ -25,8 +25,8 @@ abstract class LoaderApp[SourceConfig: Decoder, SinkConfig: Decoder](
   override def runtimeConfig =
     super.runtimeConfig.copy(cpuStarvationCheckInterval = 10.seconds)
 
-  type SinkProvider = SinkConfig => Resource[IO, Sink[IO]]
-  type SourceProvider = SourceConfig => SourceAndAck[IO]
+  type SinkProvider   = SinkConfig => Resource[IO, Sink[IO]]
+  type SourceProvider = SourceConfig => IO[SourceAndAck[IO]]
 
   def source: SourceProvider
   def badSink: SinkProvider

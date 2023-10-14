@@ -10,14 +10,16 @@ package com.snowplowanalytics.snowplow.lakes.processing
 import cats.implicits._
 import cats.effect.implicits._
 import cats.data.NonEmptyList
-import cats.{Applicative, Functor, Monad, Monoid}
+import cats.{Applicative, Foldable, Functor, Monad}
 import cats.effect.{Async, Sync}
 import cats.effect.kernel.{Ref, Unique}
-import fs2.{Pipe, Pull, Stream}
+import fs2.{Chunk, Pipe, Stream}
 import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
+import org.apache.spark.sql.Row
 
 import java.nio.charset.StandardCharsets
+import java.nio.ByteBuffer
 import scala.concurrent.duration.FiniteDuration
 
 import com.snowplowanalytics.iglu.client.resolver.registries.{Http4sRegistryLookup, RegistryLookup}
@@ -26,7 +28,9 @@ import com.snowplowanalytics.snowplow.badrows.{BadRow, Processor => BadRowProces
 import com.snowplowanalytics.snowplow.badrows.Payload.{RawPayload => BadRowRawPayload}
 import com.snowplowanalytics.snowplow.sources.{EventProcessingConfig, EventProcessor, TokenedEvents}
 import com.snowplowanalytics.snowplow.lakes.Environment
-import com.snowplowanalytics.snowplow.loaders.{NonAtomicFields, SchemaSubVersion, TabledEntity, Transform, TypedTabledEntity}
+import com.snowplowanalytics.snowplow.runtime.processing.BatchUp
+import com.snowplowanalytics.snowplow.runtime.syntax.foldable._
+import com.snowplowanalytics.snowplow.loaders.transform.{NonAtomicFields, SchemaSubVersion, TabledEntity, Transform, TypedTabledEntity}
 
 object Processing {
 
@@ -34,21 +38,21 @@ object Processing {
 
   def stream[F[_]: Async](env: Environment[F]): Stream[F, Nothing] =
     Stream.eval(env.lakeWriter.createTable).flatMap { _ =>
-      implicit val lookup: RegistryLookup[F] = Http4sRegistryLookup(env.httpClient)
+      implicit val lookup: RegistryLookup[F]           = Http4sRegistryLookup(env.httpClient)
       val eventProcessingConfig: EventProcessingConfig = EventProcessingConfig(env.windowing)
       env.source.stream(eventProcessingConfig, eventProcessor(env))
     }
 
   /** Model used between stages of the processing pipeline */
 
-  private case class Parsed(
-    event: Event,
-    originalBytes: Int,
-    entities: Map[TabledEntity, Set[SchemaSubVersion]] // caches the calculation
+  private case class ParseResult(
+    events: List[Event],
+    bad: List[BadRow],
+    originalBytes: Long
   )
 
   private case class Batched(
-    events: List[Event],
+    events: Vector[Event], // Vector for fast concatentation when batching-up
     entities: Map[TabledEntity, Set[SchemaSubVersion]],
     originalBytes: Long
   )
@@ -86,8 +90,9 @@ object Processing {
     _.through(rememberTokens(ref))
       .through(incrementReceivedCount(env))
       .through(parseBytes(env, badProcessor))
-      .through(sendAndDropFailedEvents(env))
-      .through(batchUp(env.inMemBatchBytes))
+      .through(handleParseFailures(env))
+      .through(toBatched)
+      .through(BatchUp.noTimeout(env.inMemBatchBytes))
       .through(sinkParsedBatch(env, badProcessor, ref))
 
   /**
@@ -106,10 +111,10 @@ object Processing {
         _ <- Logger[F].debug(s"Processing batch of size ${events.size}")
         nonAtomicFields <- NonAtomicFields.resolveTypes[F](env.resolver, entities)
         _ <- rememberColumnNames(ref, nonAtomicFields.fields)
-        (bad, rowsWithSchema) <- transformToSpark[F](badProcessor, events, nonAtomicFields)
-      } yield (bad, rowsWithSchema)
+        (bad, rows) <- transformToSpark[F](badProcessor, events, nonAtomicFields)
+      } yield (bad, rows, SparkSchema.forBatch(nonAtomicFields.fields))
 
-      prepare.flatMap { case (bad, RowsWithSchema(rows, schema)) =>
+      prepare.flatMap { case (bad, rows, schema) =>
         val sink = NonEmptyList.fromList(rows) match {
           case Some(nel) =>
             for {
@@ -128,12 +133,12 @@ object Processing {
       }
     }.drain
 
-  private def rememberTokens[F[_]: Functor](ref: Ref[F, WindowState]): Pipe[F, TokenedEvents, List[Array[Byte]]] =
-    _.evalMap { case TokenedEvents(events, token) =>
+  private def rememberTokens[F[_]: Functor](ref: Ref[F, WindowState]): Pipe[F, TokenedEvents, Chunk[ByteBuffer]] =
+    _.evalMap { case TokenedEvents(events, token, _) =>
       ref.update(state => state.copy(tokens = token :: state.tokens)).as(events)
     }
 
-  private def incrementReceivedCount[F[_]](env: Environment[F]): Pipe[F, List[Array[Byte]], List[Array[Byte]]] =
+  private def incrementReceivedCount[F[_]](env: Environment[F]): Pipe[F, Chunk[ByteBuffer], Chunk[ByteBuffer]] =
     _.evalTap { events =>
       env.metrics.addReceived(events.size)
     }
@@ -151,86 +156,52 @@ object Processing {
   private def parseBytes[F[_]: Async](
     env: Environment[F],
     processor: BadRowProcessor
-  ): Pipe[F, List[Array[Byte]], (List[BadRow], Batched)] =
-    _.parEvalMapUnordered(env.cpuParallelism) { list =>
-      list
-        .traverse { bytes =>
-          Applicative[F].pure {
-            val stringified = new String(bytes, StandardCharsets.UTF_8)
-            Event
-              .parse(stringified)
-              .map(event => Parsed(event, bytes.size, TabledEntity.forEvent(event)))
-              .leftMap { failure =>
-                val payload = BadRowRawPayload(stringified)
-                BadRow.LoaderParsingError(processor, failure, payload)
-              }
-          }
-        }
-        .map(_.separate)
-        .map { case (bad, parsed) =>
-          val batched = parsed.foldLeft(Monoid[Batched].empty) {
-            case (Batched(allEvents, allEntities, allBytes), Parsed(event, bytes, entities)) =>
-              Batched(event :: allEvents, allEntities |+| entities, allBytes + bytes.toLong)
-          }
-          (bad, batched)
-        }
+  ): Pipe[F, Chunk[ByteBuffer], ParseResult] =
+    _.parEvalMapUnordered(env.cpuParallelism) { chunk =>
+      for {
+        numBytes <- Sync[F].delay(Foldable[Chunk].sumBytes(chunk))
+        (badRows, events) <- Foldable[Chunk].traverseSeparateUnordered(chunk) { byteBuffer =>
+                               Sync[F].delay {
+                                 val stringified = StandardCharsets.UTF_8.decode(byteBuffer).toString
+                                 Event.parse(stringified).toEither.leftMap { failure =>
+                                   val payload = BadRowRawPayload(stringified)
+                                   BadRow.LoaderParsingError(processor, failure, payload)
+                                 }
+                               }
+                             }
+      } yield ParseResult(events, badRows, numBytes)
     }
 
-  private implicit def batchedMonoid: Monoid[Batched] = new Monoid[Batched] {
-    def empty: Batched = Batched(Nil, Map.empty, 0L)
+  private def toBatched[F[_]: Applicative]: Pipe[F, ParseResult, Batched] =
+    _.map { case ParseResult(events, _, numBytes) =>
+      val entities = Foldable[List].foldMap(events)(TabledEntity.forEvent(_))
+      Batched(events.toVector, entities, numBytes)
+    }
+
+  private implicit def batchable: BatchUp.Batchable[Batched] = new BatchUp.Batchable[Batched] {
     def combine(x: Batched, y: Batched): Batched =
       Batched(x.events |+| y.events, x.entities |+| y.entities, x.originalBytes + y.originalBytes)
+    def weightOf(a: Batched): Long = a.originalBytes
   }
 
-  private def batchUp[F[_]](maxBytes: Long): Pipe[F, Batched, Batched] = {
-
-    def go(
-      source: Stream[F, Batched],
-      batch: Batched
-    ): Pull[F, Batched, Unit] =
-      source.pull.uncons1.flatMap {
-        case None if batch.originalBytes > 0                      => Pull.output1(batch) >> Pull.done
-        case None                                                 => Pull.done
-        case Some((pulled, source)) if pulled.originalBytes === 0 => go(source, batch)
-        case Some((pulled, source)) =>
-          val combined = batch |+| pulled
-          if (combined.originalBytes > maxBytes)
-            Pull.output1(combined) >> go(source, Monoid[Batched].empty)
-          else
-            go(source, combined)
-      }
-
-    source => go(source, Monoid[Batched].empty).stream
-  }
-
-  // This is a pure cpu-bound task. In future we might choose to make this parallel by changing
-  // `events.traverse` to something like `events.grouped(1000).parTraverse(...)`
-  // We should do this only if we observe that bigger compute instances cannot make 100% use of the
-  // available cpu.
-  //
-  // The computation is wrapped in Applicative[F].pure() so the Cats Effect runtime can cede to other fibers
-  private def transformToSpark[F[_]: Applicative](
+  // The pure computation is wrapped in a F to help the Cats Effect runtime to periodically cede to other fibers
+  private def transformToSpark[F[_]: Sync](
     processor: BadRowProcessor,
-    events: List[Event],
+    events: Vector[Event],
     entities: NonAtomicFields.Result
-  ): F[(List[BadRow], RowsWithSchema)] =
-    events
-      .traverse { event =>
-        Applicative[F].pure {
-          Transform
-            .transformEvent[Any](processor, SparkCaster, event, entities)
-            .map(SparkCaster.structValue(_))
-        }
+  ): F[(List[BadRow], List[Row])] =
+    Foldable[Vector].traverseSeparateUnordered(events) { event =>
+      Sync[F].delay {
+        Transform
+          .transformEvent[Any](processor, SparkCaster, event, entities)
+          .map(SparkCaster.structValue(_))
       }
-      .map { results =>
-        val (bad, good) = results.separate
-        (bad, RowsWithSchema(good, SparkSchema.forBatch(entities.fields)))
-      }
+    }
 
-  private def sendAndDropFailedEvents[F[_]: Applicative, A](env: Environment[F]): Pipe[F, (List[BadRow], A), A] =
-    _.evalTap { case (bad, _) =>
-      sendFailedEvents(env, bad)
-    }.map(_._2)
+  private def handleParseFailures[F[_]: Applicative, A](env: Environment[F]): Pipe[F, ParseResult, ParseResult] =
+    _.evalTap { batch =>
+      sendFailedEvents(env, batch.bad)
+    }
 
   private def sendFailedEvents[F[_]: Applicative, A](env: Environment[F], bad: List[BadRow]): F[Unit] =
     if (bad.nonEmpty) {
