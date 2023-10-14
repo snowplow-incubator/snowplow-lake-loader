@@ -10,8 +10,8 @@
 
 package com.snowplowanalytics.snowplow.lakes
 
-import com.snowplowanalytics.snowplow.sources.{PubsubSource, PubsubSourceConfig}
-import com.snowplowanalytics.snowplow.sinks.{PubsubSink, PubsubSinkConfig}
+import com.snowplowanalytics.snowplow.sources.pubsub.{PubsubSource, PubsubSourceConfig}
+import com.snowplowanalytics.snowplow.sinks.pubsub.{PubsubSink, PubsubSinkConfig}
 
 object GcpApp extends LoaderApp[PubsubSourceConfig, PubsubSinkConfig](BuildInfo) {
 

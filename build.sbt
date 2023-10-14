@@ -8,58 +8,26 @@
  * OF THE SOFTWARE, YOU AGREE TO THE TERMS OF SUCH LICENSE AGREEMENT.
  */
 
-lazy val root = project.in(file("."))
+lazy val root = project
+  .in(file("."))
   .aggregate(
-    streams,
-    kafka,
-    pubsub,
-    loadersCommon,
     core,
     azure,
     gcp
   )
-
-/* Common Snowplow internal modules, to become separate library */
-
-lazy val streams: Project = project
-  .in(file("snowplow-common-internal/streams-core"))
-  .settings(BuildSettings.commonSettings)
-  .settings(libraryDependencies ++= Dependencies.streamsDependencies)
-
-lazy val kafka: Project = project
-  .in(file("snowplow-common-internal/kafka"))
-  .settings(BuildSettings.commonSettings)
-  .settings(libraryDependencies ++= Dependencies.kafkaDependencies)
-  .dependsOn(streams)
-
-lazy val pubsub: Project = project
-  .in(file("snowplow-common-internal/pubsub"))
-  .settings(BuildSettings.commonSettings)
-  .settings(libraryDependencies ++= Dependencies.pubsubDependencies)
-  .dependsOn(streams)
-
-lazy val loadersCommon: Project = project
-  .in(file("snowplow-common-internal/loaders-common"))
-  .settings(BuildSettings.commonSettings)
-  .settings(libraryDependencies ++= Dependencies.loadersCommonDependencies)
-
-/* End of common Snowplow internal modules */
-
-/* This app */
 
 lazy val core: Project = project
   .in(file("modules/core"))
   .settings(BuildSettings.commonSettings ++ BuildSettings.logSettings)
   .settings(libraryDependencies ++= Dependencies.coreDependencies)
   .settings(excludeDependencies ++= Dependencies.commonExclusions)
-  .dependsOn(loadersCommon, streams)
 
 lazy val azure: Project = project
   .in(file("modules/azure"))
   .settings(BuildSettings.azureSettings)
   .settings(libraryDependencies ++= Dependencies.azureDependencies)
   .settings(excludeDependencies ++= Dependencies.commonExclusions)
-  .dependsOn(core, kafka)
+  .dependsOn(core)
   .enablePlugins(BuildInfoPlugin, JavaAppPackaging, SnowplowDockerPlugin)
 
 lazy val gcp: Project = project
@@ -67,7 +35,7 @@ lazy val gcp: Project = project
   .settings(BuildSettings.gcpSettings)
   .settings(libraryDependencies ++= Dependencies.gcpDependencies)
   .settings(excludeDependencies ++= Dependencies.commonExclusions)
-  .dependsOn(core, pubsub)
+  .dependsOn(core)
   .enablePlugins(BuildInfoPlugin, JavaAppPackaging, SnowplowDockerPlugin)
 
 // Temporarily, separate out biglake support into its own project.
@@ -80,7 +48,7 @@ lazy val gcpWithBiglake: Project = project
   .settings(libraryDependencies ++= Dependencies.gcpDependencies)
   .settings(libraryDependencies ++= Dependencies.biglakeDependencies)
   .settings(excludeDependencies ++= Dependencies.commonExclusions)
-  .dependsOn(core, pubsub)
+  .dependsOn(core)
   .enablePlugins(BuildInfoPlugin, JavaAppPackaging, SnowplowDockerPlugin)
 
 ThisBuild / fork := true

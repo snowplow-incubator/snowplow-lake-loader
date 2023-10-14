@@ -46,9 +46,9 @@ private[processing] object SparkUtils {
     configureSparkForTarget(builder, target)
     configureSparkWithExtras(builder, config.conf)
 
-    val openLogF = Logger[F].info("Creating the global spark session...")
+    val openLogF  = Logger[F].info("Creating the global spark session...")
     val closeLogF = Logger[F].info("Closing the global spark session...")
-    val buildF = Sync[F].delay(builder.getOrCreate())
+    val buildF    = Sync[F].delay(builder.getOrCreate())
 
     Resource
       .make(openLogF >> buildF)(s => closeLogF >> Sync[F].blocking(s.close())) <*
@@ -94,7 +94,7 @@ private[processing] object SparkUtils {
 
   def createTable[F[_]: Sync](spark: SparkSession, target: Config.Target): F[Unit] =
     target match {
-      case delta: Config.Delta => createDelta(spark, delta)
+      case delta: Config.Delta     => createDelta(spark, delta)
       case iceberg: Config.Iceberg => createIceberg(spark, iceberg)
     }
 
@@ -111,7 +111,7 @@ private[processing] object SparkUtils {
     // This column needs special treatment because of the `generatedAlwaysAs` clause
     builder.addColumn {
       DeltaTable
-        .columnBuilder("load_tstamp_date")
+        .columnBuilder(spark, "load_tstamp_date")
         .dataType("DATE")
         .generatedAlwaysAs("CAST(load_tstamp AS DATE)")
         .nullable(false)
@@ -131,7 +131,7 @@ private[processing] object SparkUtils {
 
   private def createIceberg[F[_]: Sync](spark: SparkSession, target: Config.Iceberg): F[Unit] = {
     val name = qualifiedNameForIceberg(target)
-    val db = qualifiedDbForIceberg(target)
+    val db   = qualifiedDbForIceberg(target)
 
     val extraProperties = target match {
       case biglake: Config.IcebergBigLake =>
