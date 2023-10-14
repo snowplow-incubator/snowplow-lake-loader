@@ -36,7 +36,6 @@ object BuildSettings {
       IO.copyFile(file("LICENSE.md"), license)
       Seq(license)
     }.taskValue
-
   )
 
   lazy val logSettings = Seq(
@@ -46,10 +45,10 @@ object BuildSettings {
   )
 
   lazy val appSettings = Seq(
-      buildInfoKeys := Seq[BuildInfoKey](dockerAlias, name, version),
-      buildInfoPackage := "com.snowplowanalytics.snowplow.lakes",
-      buildInfoOptions += BuildInfoOption.Traits("com.snowplowanalytics.snowplow.loaders.AppInfo"),
-    ) ++ commonSettings ++ logSettings
+    buildInfoKeys := Seq[BuildInfoKey](dockerAlias, name, version),
+    buildInfoPackage := "com.snowplowanalytics.snowplow.lakes",
+    buildInfoOptions += BuildInfoOption.Traits("com.snowplowanalytics.snowplow.runtime.AppInfo")
+  ) ++ commonSettings ++ logSettings
 
   lazy val azureSettings = appSettings ++ Seq(
     name := "lake-loader-azure",
@@ -60,8 +59,7 @@ object BuildSettings {
 
   lazy val gcpSettings = appSettings ++ Seq(
     name := "lake-loader-gcp",
-    buildInfoKeys += BuildInfoKey("cloud" -> "GCP"),
-
+    buildInfoKeys += BuildInfoKey("cloud" -> "GCP")
   )
 
   lazy val biglakeSettings = Seq(
@@ -70,12 +68,12 @@ object BuildSettings {
       IO.createDirectory(libDir)
       val file = libDir / "biglake-catalog-iceberg1.2.0-0.1.0-with-dependencies.jar"
       if (!file.exists) {
-        url("https://storage.googleapis.com/storage/v1/b/spark-lib/o/biglake%2Fbiglake-catalog-iceberg1.2.0-0.1.0-with-dependencies.jar?alt=media") #> file !
+        url(
+          "https://storage.googleapis.com/storage/v1/b/spark-lib/o/biglake%2Fbiglake-catalog-iceberg1.2.0-0.1.0-with-dependencies.jar?alt=media"
+        ) #> file !
       }
     },
-
     Compile / compile := ((Compile / compile) dependsOn downloadUnmanagedJars).value,
-
     dockerAlias := dockerAlias.value.copy(tag = dockerAlias.value.tag.map(t => s"$t-biglake"))
   )
 

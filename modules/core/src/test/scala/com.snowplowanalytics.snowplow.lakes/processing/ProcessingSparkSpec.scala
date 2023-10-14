@@ -56,14 +56,14 @@ class ProcessingSparkSpec extends Specification with CatsEffect {
       sparkForAssertions.use { spark =>
         IO.delay {
           import spark.implicits._
-          val tbl = DeltaTable.forPath(spark, tmpDir.resolve("events").toString)
-          val df = tbl.toDF
+          val tbl  = DeltaTable.forPath(spark, tmpDir.resolve("events").toString)
+          val df   = tbl.toDF
           val cols = df.columns.toSeq
 
-          val inputEventIds = inputEvents.flatten.map(_.event_id.toString)
+          val inputEventIds  = inputEvents.flatten.map(_.event_id.toString)
           val outputEventIds = df.select("event_id").as[String].collect().toSeq
-          val loadTstamps = df.select("load_tstamp").as[java.sql.Timestamp].collect().toSeq
-          val trTotals = df.select("tr_total").as[BigDecimal].collect().toSeq
+          val loadTstamps    = df.select("load_tstamp").as[java.sql.Timestamp].collect().toSeq
+          val trTotals       = df.select("tr_total").as[BigDecimal].collect().toSeq
 
           List[MatchResult[Any]](
             cols must contain("event_id"),
@@ -99,19 +99,19 @@ class ProcessingSparkSpec extends Specification with CatsEffect {
       sparkForAssertions.use { spark =>
         IO.delay {
           import spark.implicits._
-          val tbl = DeltaTable.forPath(spark, tmpDir.resolve("events").toString)
-          val df = tbl.toDF
+          val tbl  = DeltaTable.forPath(spark, tmpDir.resolve("events").toString)
+          val df   = tbl.toDF
           val cols = df.columns.toSeq
 
-          val inputEventIds = inputEvents.flatten.map(_.event_id.toString)
+          val inputEventIds  = inputEvents.flatten.map(_.event_id.toString)
           val outputEventIds = df.select("event_id").as[String].collect().toSeq
-          val loadTstamps = df.select("load_tstamp").as[java.sql.Timestamp].collect().toSeq
+          val loadTstamps    = df.select("load_tstamp").as[java.sql.Timestamp].collect().toSeq
 
           List[MatchResult[Any]](
             cols must contain("event_id"),
             cols must contain("load_tstamp"),
             cols must contain("unstruct_event_myvendor_badevolution_1"),
-            cols must contain("unstruct_event_myvendor_badevolution_1_recovered_1_0_1_164698669"),
+            cols must contain("unstruct_event_myvendor_badevolution_1_recovered_1_0_1_37fd804e"),
             df.count() must beEqualTo(4L),
             outputEventIds must containTheSameElementsAs(inputEventIds),
             loadTstamps.toSet must haveSize(1), // single timestamp for entire window
@@ -141,9 +141,9 @@ object ProcessingSparkSpec {
           .minimal(eventId2, collectorTstamp, "0.0.0", "0.0.0")
           .copy(unstruct_event = ueGood701)
         val serialized = List(event1, event2).map { e =>
-          e.toTsv.getBytes(StandardCharsets.UTF_8)
+          StandardCharsets.UTF_8.encode(e.toTsv)
         }
-        (TokenedEvents(serialized, ack), List(event1, event2))
+        (TokenedEvents(serialized, ack, None), List(event1, event2))
       }
     }.repeat
 
@@ -162,9 +162,9 @@ object ProcessingSparkSpec {
           .minimal(eventId2, collectorTstamp, "0.0.0", "0.0.0")
           .copy(unstruct_event = ueBadEvolution101)
         val serialized = List(event1, event2).map { e =>
-          e.toTsv.getBytes(StandardCharsets.UTF_8)
+          StandardCharsets.UTF_8.encode(e.toTsv)
         }
-        (TokenedEvents(serialized, ack), List(event1, event2))
+        (TokenedEvents(serialized, ack, None), List(event1, event2))
       }
     }.repeat
 

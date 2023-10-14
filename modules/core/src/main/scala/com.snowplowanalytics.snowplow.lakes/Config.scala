@@ -12,12 +12,13 @@ import io.circe.Decoder
 import io.circe.generic.extras.semiauto._
 import io.circe.generic.extras.Configuration
 import io.circe.config.syntax._
+import com.comcast.ip4s.Port
 
 import java.net.URI
 import scala.concurrent.duration.FiniteDuration
 
 import com.snowplowanalytics.iglu.client.resolver.Resolver.ResolverConfig
-import com.snowplowanalytics.snowplow.loaders.{Metrics => CommonMetrics, Telemetry}
+import com.snowplowanalytics.snowplow.runtime.{Metrics => CommonMetrics, Telemetry}
 
 case class Config[+Source, +Sink](
   input: Source,
@@ -106,17 +107,20 @@ object Config {
 
   type Sentry = SentryM[Id]
 
+  case class HealthProbe(port: Port, unhealthyLatency: FiniteDuration)
+
   case class Monitoring(
     metrics: Metrics,
-    sentry: Option[Sentry]
+    sentry: Option[Sentry],
+    healthProbe: HealthProbe
   )
 
   implicit def decoder[Source: Decoder, Sink: Decoder]: Decoder[Config[Source, Sink]] = {
     implicit val configuration = Configuration.default.withDiscriminator("type")
-    implicit val target = deriveConfiguredDecoder[Target]
-    implicit val output = deriveConfiguredDecoder[Output[Sink]]
-    implicit val spark = deriveConfiguredDecoder[Spark]
-    implicit val telemetry = deriveConfiguredDecoder[Telemetry.Config]
+    implicit val target        = deriveConfiguredDecoder[Target]
+    implicit val output        = deriveConfiguredDecoder[Output[Sink]]
+    implicit val spark         = deriveConfiguredDecoder[Spark]
+    implicit val telemetry     = deriveConfiguredDecoder[Telemetry.Config]
     implicit val statsdDecoder = deriveConfiguredDecoder[StatsdUnresolved].map(Statsd.resolve(_))
     implicit val sentryDecoder = deriveConfiguredDecoder[SentryM[Option]]
       .map[Option[Sentry]] {
@@ -126,7 +130,11 @@ object Config {
           None
       }
     implicit val metricsDecoder = deriveConfiguredDecoder[Metrics]
-    implicit val monitoringDecoder = deriveConfiguredDecoder[Monitoring]
+    implicit val portDecoder = Decoder.decodeInt.emap { port =>
+      Port.fromInt(port).toRight("Invalid port")
+    }
+    implicit val healthProbeDecoder = deriveConfiguredDecoder[HealthProbe]
+    implicit val monitoringDecoder  = deriveConfiguredDecoder[Monitoring]
     deriveConfiguredDecoder[Config[Source, Sink]]
   }
 

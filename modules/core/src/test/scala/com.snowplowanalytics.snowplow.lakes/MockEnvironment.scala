@@ -16,7 +16,7 @@ import fs2.Stream
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.types.StructType
 
-import scala.concurrent.duration.DurationInt
+import scala.concurrent.duration.{Duration, DurationInt, FiniteDuration}
 
 import com.snowplowanalytics.iglu.client.Resolver
 import com.snowplowanalytics.snowplow.sources.{EventProcessingConfig, EventProcessor, SourceAndAck, TokenedEvents}
@@ -53,16 +53,16 @@ object MockEnvironment {
       counter <- Ref[IO].of(0)
     } yield {
       val env = Environment(
-        appInfo = TestSparkEnvironment.appInfo,
-        source = testSourceAndAck(windows, state),
-        badSink = testSink(state),
-        resolver = Resolver[IO](Nil, None),
-        httpClient = testHttpClient,
-        lakeWriter = testLakeWriter(state, counter),
-        metrics = TestSparkEnvironment.testMetrics,
+        appInfo         = TestSparkEnvironment.appInfo,
+        source          = testSourceAndAck(windows, state),
+        badSink         = testSink(state),
+        resolver        = Resolver[IO](Nil, None),
+        httpClient      = testHttpClient,
+        lakeWriter      = testLakeWriter(state, counter),
+        metrics         = TestSparkEnvironment.testMetrics,
         inMemBatchBytes = 1000000L,
-        cpuParallelism = 1,
-        windowing = EventProcessingConfig.TimedWindows(1.minute, 1.0)
+        cpuParallelism  = 1,
+        windowing       = EventProcessingConfig.TimedWindows(1.minute, 1.0)
       )
       MockEnvironment(state, env)
     }
@@ -98,6 +98,8 @@ object MockEnvironment {
             }
             .drain
         }
+
+      def processingLatency: IO[FiniteDuration] = IO.pure(Duration.Zero)
     }
 
   private def testSink(ref: Ref[IO, Vector[Action]]): Sink[IO] = Sink[IO] { batch =>

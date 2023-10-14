@@ -7,6 +7,7 @@
  */
 package com.snowplowanalytics.snowplow.lakes
 
+import cats.Functor
 import cats.implicits._
 import cats.effect.{Async, Resource, Sync}
 import cats.effect.unsafe.implicits.global
@@ -18,7 +19,7 @@ import com.snowplowanalytics.iglu.client.resolver.Resolver
 import com.snowplowanalytics.snowplow.sources.{EventProcessingConfig, SourceAndAck}
 import com.snowplowanalytics.snowplow.sinks.Sink
 import com.snowplowanalytics.snowplow.lakes.processing.LakeWriter
-import com.snowplowanalytics.snowplow.loaders.AppInfo
+import com.snowplowanalytics.snowplow.runtime.{AppInfo, HealthProbe}
 
 case class Environment[F[_]](
   appInfo: AppInfo,
@@ -38,28 +39,30 @@ object Environment {
   def fromConfig[F[_]: Async, SourceConfig, SinkConfig](
     config: Config.WithIglu[SourceConfig, SinkConfig],
     appInfo: AppInfo,
-    source: SourceConfig => SourceAndAck[F],
-    sink: SinkConfig => Resource[F, Sink[F]]
+    toSource: SourceConfig => F[SourceAndAck[F]],
+    toSink: SinkConfig => Resource[F, Sink[F]]
   ): Resource[F, Environment[F]] =
     for {
       _ <- enableSentry[F](appInfo, config.main.monitoring.sentry)
       resolver <- mkResolver[F](config.iglu)
       httpClient <- BlazeClientBuilder[F].withExecutionContext(global.compute).resource
-      badSink <- sink(config.main.output.bad)
+      badSink <- toSink(config.main.output.bad)
       windowing <- Resource.eval(EventProcessingConfig.TimedWindows.build(config.main.windowing))
       lakeWriter <- LakeWriter.build[F](config.main.spark, config.main.output.good)
+      sourceAndAck <- Resource.eval(toSource(config.main.input))
       metrics <- Resource.eval(Metrics.build(config.main.monitoring.metrics))
+      _ <- HealthProbe.resource(config.main.monitoring.healthProbe.port, isHealthy(config.main.monitoring.healthProbe, sourceAndAck))
     } yield Environment(
-      appInfo = appInfo,
-      source = source(config.main.input),
-      badSink = badSink,
-      resolver = resolver,
-      httpClient = httpClient,
-      lakeWriter = lakeWriter,
-      metrics = metrics,
-      cpuParallelism = chooseCpuParallelism(config.main),
+      appInfo         = appInfo,
+      source          = sourceAndAck,
+      badSink         = badSink,
+      resolver        = resolver,
+      httpClient      = httpClient,
+      lakeWriter      = lakeWriter,
+      metrics         = metrics,
+      cpuParallelism  = chooseCpuParallelism(config.main),
       inMemBatchBytes = config.main.inMemBatchBytes,
-      windowing = windowing
+      windowing       = windowing
     )
 
   private def enableSentry[F[_]: Sync](appInfo: AppInfo, config: Option[Config.Sentry]): Resource[F, Unit] =
@@ -77,7 +80,7 @@ object Environment {
 
         Resource.makeCase(acquire) {
           case (_, Resource.ExitCase.Errored(e)) => Sync[F].delay(Sentry.captureException(e)).void
-          case _ => Sync[F].unit
+          case _                                 => Sync[F].unit
         }
       case None =>
         Resource.unit[F]
@@ -102,4 +105,11 @@ object Environment {
       .setScale(0, BigDecimal.RoundingMode.UP)
       .toInt
 
+  private def isHealthy[F[_]: Functor](config: Config.HealthProbe, source: SourceAndAck[F]): F[HealthProbe.Status] =
+    source.processingLatency.map { latency =>
+      if (latency > config.unhealthyLatency)
+        HealthProbe.Unhealthy(show"Processing latency is $latency")
+      else
+        HealthProbe.Healthy
+    }
 }

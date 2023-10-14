@@ -14,7 +14,7 @@ import fs2.Stream
 
 import scala.concurrent.duration.FiniteDuration
 
-import com.snowplowanalytics.snowplow.loaders.{Metrics => CommonMetrics}
+import com.snowplowanalytics.snowplow.runtime.{Metrics => CommonMetrics}
 
 trait Metrics[F[_]] {
   def addReceived(count: Int): F[Unit]
@@ -66,26 +66,26 @@ object Metrics {
   private object KVMetric {
 
     final case class CountReceived(v: Int) extends CommonMetrics.KVMetric {
-      val key = "events_received"
-      val value = v.toString
+      val key        = "events_received"
+      val value      = v.toString
       val metricType = CommonMetrics.MetricType.Count
     }
 
     final case class CountBad(v: Int) extends CommonMetrics.KVMetric {
-      val key = "events_bad"
-      val value = v.toString
+      val key        = "events_bad"
+      val value      = v.toString
       val metricType = CommonMetrics.MetricType.Count
     }
 
     final case class CountCommitted(v: Int) extends CommonMetrics.KVMetric {
-      val key = "events_committed"
-      val value = v.toString
+      val key        = "events_committed"
+      val value      = v.toString
       val metricType = CommonMetrics.MetricType.Count
     }
 
     final case class ProcessingLatency(d: FiniteDuration) extends CommonMetrics.KVMetric {
-      val key = "processing_latency_seconds"
-      val value = d.toSeconds.toString
+      val key        = "processing_latency_seconds"
+      val value      = d.toSeconds.toString
       val metricType = CommonMetrics.MetricType.Gauge
     }
 
