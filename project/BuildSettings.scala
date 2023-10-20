@@ -23,7 +23,7 @@ object BuildSettings {
 
   lazy val commonSettings = Seq(
     organization := "com.snowplowanalytics",
-    scalaVersion := "2.13.10",
+    scalaVersion := "2.12.18",
     scalafmtConfig := file(".scalafmt.conf"),
     scalafmtOnCompile := false,
     scalacOptions += "-Ywarn-macros:after",
