@@ -192,9 +192,9 @@ object Processing {
       batch: Batched
     ): Pull[F, Batched, Unit] =
       source.pull.uncons1.flatMap {
-        case None if batch.originalBytes > 0 => Pull.output1(batch) >> Pull.done
-        case None => Pull.done
-        case Some((Nil, source)) => go(source, batch)
+        case None if batch.originalBytes > 0                      => Pull.output1(batch) >> Pull.done
+        case None                                                 => Pull.done
+        case Some((pulled, source)) if pulled.originalBytes === 0 => go(source, batch)
         case Some((pulled, source)) =>
           val combined = batch |+| pulled
           if (combined.originalBytes > maxBytes)

@@ -44,7 +44,7 @@ object Metrics {
         KVMetric.CountReceived(received),
         KVMetric.CountBad(bad),
         KVMetric.CountCommitted(committed)
-      ) :++ processingLatency.map(KVMetric.ProcessingLatency(_))
+      ) ++ processingLatency.map(KVMetric.ProcessingLatency(_))
   }
 
   private object State {
