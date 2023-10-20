@@ -57,7 +57,8 @@ private[processing] object SparkUtils {
       case Config.Delta(_, _) =>
         builder
           .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
-          .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog"): Unit
+          .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
+        ()
       case snowflake: Config.IcebergSnowflake =>
         builder
           .config("spark.sql.extensions", "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions")
@@ -66,7 +67,8 @@ private[processing] object SparkUtils {
           .config("spark.sql.catalog.iceberg_catalog.uri", s"jdbc:snowflake://${snowflake.host}")
           .config("spark.sql.catalog.iceberg_catalog.jdbc.user", snowflake.user)
           .config("spark.sql.catalog.iceberg_catalog.jdbc.password", snowflake.password)
-          .config("spark.sql.catalog.iceberg_catalog.jdbc.role", snowflake.role.orNull): Unit
+          .config("spark.sql.catalog.iceberg_catalog.jdbc.role", snowflake.role.orNull)
+        ()
       // The "application" property is sadly not configurable because SnowflakeCatalog overrides it :(
       // .config("spark.sql.catalog.spark_catalog.jdbc.application", "snowplow")
 
@@ -78,7 +80,8 @@ private[processing] object SparkUtils {
           .config("spark.sql.catalog.iceberg_catalog.gcp_project", biglake.project)
           .config("spark.sql.catalog.iceberg_catalog.gcp_location", biglake.region)
           .config("spark.sql.catalog.iceberg_catalog.blms_catalog", biglake.catalog)
-          .config("spark.sql.catalog.iceberg_catalog.warehouse", biglake.location.toString): Unit
+          .config("spark.sql.catalog.iceberg_catalog.warehouse", biglake.location.toString)
+        ()
     }
 
   private def configureSparkWithExtras(builder: SparkSession.Builder, conf: Map[String, String]): Unit =
@@ -98,7 +101,7 @@ private[processing] object SparkUtils {
       .partitionedBy("load_tstamp_date", "event_name")
       .location(target.location.toString)
       .tableName("events_internal_id") // The name does not matter
-      .property("delta.dataSkippingNumIndexedCols", target.dataSkippingColumns.toSet.size.toString)
+      .property("delta.dataSkippingNumIndexedCols", target.dataSkippingColumns.toSet.size.toString())
 
     SparkSchema.fieldsForDeltaCreate(target).foreach(builder.addColumn(_))
 
@@ -110,7 +113,7 @@ private[processing] object SparkUtils {
         .generatedAlwaysAs("CAST(load_tstamp AS DATE)")
         .nullable(false)
         .build()
-    }: Unit
+    }
 
     Logger[F].info(s"Creating Delta table ${target.location} if it does not already exist...") >>
       Sync[F]
@@ -141,8 +144,8 @@ private[processing] object SparkUtils {
 
     Logger[F].info(s"Creating Iceberg table $name if it does not already exist...") >>
       Sync[F].blocking {
-        spark.sql("CREATE NAMESPACE IF NOT EXISTS iceberg_catalog"): Unit
-        spark.sql(s"CREATE DATABASE IF NOT EXISTS $db"): Unit
+        spark.sql("CREATE NAMESPACE IF NOT EXISTS iceberg_catalog")
+        spark.sql(s"CREATE DATABASE IF NOT EXISTS $db")
         spark.sql(s"""
       CREATE TABLE IF NOT EXISTS $name
       (${SparkSchema.ddlForIcebergCreate})
