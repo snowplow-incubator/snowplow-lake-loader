@@ -1,0 +1,16 @@
+{
+  "input": {
+    "streamName": "sp-enriched"
+  }
+
+  "output": {
+
+    "good": {
+      "location": "s3://my-bucket/events"
+    }
+
+    "bad": {
+      "streamName": "bad"
+    }
+  }
+}

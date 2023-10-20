@@ -1,20 +1,35 @@
 {
   "input": {
-    # -- Pubsub subscription for the source of enriched events (required)
-    "subscription": "projects/myproject/subscriptions/snowplow-enriched"
+    # -- kinesis stream for the source of enriched events
+    "streamName": "snowplow-enriched-events"
 
-    # -- How many threads are used internally by the pubsub client library for fetching events
-    "parallelPullCount": 3
+    # -- name to use for the KCL dynamodb table
+    "appName": "snowplow-snowflake-loader"
 
-    # -- How many bytes can be buffered by the loader app before blocking the pubsub client library
-    # -- from fetching more events.
-    # -- This is a balance between memory usage vs how efficiently the app can operate.  The default value works well.
-    "bufferMaxBytes": 10000000
+    # -- From where the loader should start consuming if this is the first time it is run.
+    # -- On subsequent runs, it will always resume from where it last checkpointed.
+    "initialPosition": {
+      # -- Options are `TRIM_HORIZON` for the oldest available events, `LATEST` for latest events,
+      # -- or `AT_TIMESTAMP` to start consuming from events written at a particular time.
+      "type": "TRIM_HORIZON"
 
-    # -- Sets min/max boundaries on the value by which an ack deadline is extended.
-    # -- The actual value used is guided by runtime statistics collected by the pubsub client library.
-    "minDurationPerAckExtension": "60 seconds"
-    "maxDurationPerAckExtension": "600 seconds"
+      # -- Only required if `initialPosition.type` is AT_TIMESTAMP
+      "timestamp": "2023-01-01T00:00:00Z"
+    }
+
+    # -- How the underlying Kinesis client should fetch events from the stream
+    "retrievalMode": {
+      # -- Options are "Polling" for the client to poll Kinesis for more events when needed
+      # -- or "FanOut" to enabled Kinesis's Enhanced Fan Out feature using HTTP/2
+      "type": "Polling"
+
+      # -- Only used if retrieval mode is type Polling. How many events the client may fetch in a single poll.
+      "maxRecords": 1000
+    }
+
+    # -- The number of batches of events which are pre-fetched from kinesis.
+    # -- Increasing this above 1 is not known to improve performance.
+    "bufferSize": 3
   }
 
   "output": {
@@ -36,13 +51,20 @@
     }
 
     "bad": {
-      # -- Output pubsub topic for emitting failed events that could not be processed (required)
-      "topic": "projects/myproject/topics/snowplow-bad"
+      # -- output kinesis stream for emitting failed events that could not be processed
+      "streamName": "bad"
 
-      # -- Bad events are sent to Pubsub in batches not exceeding this count.
-      "batchSize": 100
-      # -- Bad events are sent to Pubsub in batches with a total size not exceeding this byte threshold
-      "requestByteThreshold": 1000000
+      # -- how to retry sending failed events if we exceed the kinesis write throughput limits
+      "throttledBackoffPolicy": {
+        "minBackoff": "100 milliseconds"
+        "maxBackoff": "1 second"
+      }
+
+      # -- the maximum allowed to records we are allowed to send to Kinesis in 1 PutRecords request
+      "recordLimit": 500
+
+      # -- the maximum allowed to bytes we are allowed to send to Kinesis in 1 PutRecords request
+      "byteLimit": 5242880
     }
 
   }
