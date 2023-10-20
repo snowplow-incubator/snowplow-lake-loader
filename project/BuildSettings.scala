@@ -50,6 +50,11 @@ object BuildSettings {
     buildInfoOptions += BuildInfoOption.Traits("com.snowplowanalytics.snowplow.runtime.AppInfo")
   ) ++ commonSettings ++ logSettings
 
+  lazy val awsSettings = appSettings ++ Seq(
+    name := "lake-loader-aws",
+    buildInfoKeys += BuildInfoKey("cloud" -> "AWS")
+  )
+
   lazy val azureSettings = appSettings ++ Seq(
     name := "lake-loader-azure",
     buildInfoKeys += BuildInfoKey("cloud" -> "Azure")

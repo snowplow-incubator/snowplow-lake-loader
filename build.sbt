@@ -36,6 +36,14 @@ lazy val gcp: Project = project
   .dependsOn(core)
   .enablePlugins(BuildInfoPlugin, JavaAppPackaging, SnowplowDockerPlugin)
 
+lazy val aws: Project = project
+  .in(file("modules/aws"))
+  .settings(BuildSettings.awsSettings)
+  .settings(libraryDependencies ++= Dependencies.awsDependencies)
+  .settings(excludeDependencies ++= Dependencies.commonExclusions)
+  .dependsOn(core)
+  .enablePlugins(BuildInfoPlugin, JavaAppPackaging, SnowplowDockerPlugin)
+
 // Temporarily, separate out biglake support into its own project.
 // Because the biglake shaded jar adds CVEs which are difficult to remove from the build.
 lazy val gcpWithBiglake: Project = project

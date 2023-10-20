@@ -31,6 +31,7 @@ object Dependencies {
     val slf4j    = "2.0.7"
     val azureSdk = "1.9.1"
     val sentry   = "6.25.2"
+    val awsSdk   = "2.21.4"
 
     // Snowplow
     val streams    = "0.2.0-M1"
@@ -61,14 +62,16 @@ object Dependencies {
   val iceberg      = "org.apache.iceberg"         %% "iceberg-spark-runtime-3.4" % V.iceberg
   val hadoopClient = "org.apache.hadoop"           % "hadoop-client-runtime"     % V.hadoop
   val hadoopAzure  = "org.apache.hadoop"           % "hadoop-azure"              % V.hadoop
+  val hadoopAws    = "org.apache.hadoop"           % "hadoop-aws"                % V.hadoop
   val gcsConnector = "com.google.cloud.bigdataoss" % "gcs-connector"             % V.gcsConnector
   val hiveCommon = ("org.apache.hive" % "hive-common" % V.hiveCommon)
     .exclude("com.github.joshelser", "dropwizard-metrics-hadoop-metrics2-reporter")
 
   // java
-  val slf4j         = "org.slf4j" % "slf4j-simple"   % V.slf4j
-  val azureIdentity = "com.azure" % "azure-identity" % V.azureSdk
-  val sentry        = "io.sentry" % "sentry"         % V.sentry
+  val slf4j         = "org.slf4j"              % "slf4j-simple"   % V.slf4j
+  val azureIdentity = "com.azure"              % "azure-identity" % V.azureSdk
+  val sentry        = "io.sentry"              % "sentry"         % V.sentry
+  val sts           = "software.amazon.awssdk" % "sts"            % V.awsSdk
 
   // transitive overrides
   val protobuf   = "com.google.protobuf"        % "protobuf-java"                      % V.protobuf
@@ -116,6 +119,12 @@ object Dependencies {
     slf4j        % Runtime,
     protobuf     % Runtime
   )
+
+  val awsDependencies = Seq(
+    kinesis,
+    sts       % Runtime,
+    hadoopAws % Runtime
+  ) ++ commonRuntimeDependencies
 
   val azureDependencies = Seq(
     kafka,
