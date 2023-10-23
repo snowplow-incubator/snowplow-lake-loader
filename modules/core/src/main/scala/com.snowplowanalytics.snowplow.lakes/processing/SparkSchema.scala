@@ -14,16 +14,15 @@ import org.apache.spark.sql.types._
 
 import com.snowplowanalytics.iglu.schemaddl.parquet.{Field, Type}
 import com.snowplowanalytics.snowplow.loaders.transform.{AtomicFields, TypedTabledEntity}
-import com.snowplowanalytics.snowplow.lakes.Config
 
-private[processing] object SparkSchema {
+object SparkSchema {
 
   /**
    * Builds the Spark schema for building a data frame of a batch of events
    *
    * The returned schema includes atomic fields and non-atomic fields but not the load_tstamp column
    */
-  def forBatch(entities: List[TypedTabledEntity]): StructType = {
+  private[processing] def forBatch(entities: List[TypedTabledEntity]): StructType = {
     val nonAtomicFields = entities.flatMap { tte =>
       tte.mergedField :: tte.recoveries.map(_._2)
     }
@@ -40,27 +39,11 @@ private[processing] object SparkSchema {
    */
   val atomic: List[StructField] = AtomicFields.static.map(asSparkField)
 
-  /**
-   * Ordered spark Fields corresponding to the output of this loader
-   *
-   * Includes fields added by the loader, e.g. `load_tstamp`
-   *
-   * @param config
-   *   The Delta config, whose `dataSkippingColumn` param tells us which columns must go first in
-   *   the table definition. See Delta's data skipping feature to understand why.
-   */
-  def fieldsForDeltaCreate(config: Config.Delta): List[StructField] = {
-    val (withStats, noStats) = AtomicFields.withLoadTstamp.partition { f =>
-      config.dataSkippingColumns.contains(f.name)
-    }
-    (withStats ::: noStats).map(asSparkField)
-  }
-
   /** String representation of the atomic schema for creating a table using SQL dialiect */
-  def ddlForIcebergCreate: String =
+  def ddlForCreate: String =
     StructType(AtomicFields.withLoadTstamp.map(asSparkField)).toDDL
 
-  private def asSparkField(ddlField: Field): StructField = {
+  def asSparkField(ddlField: Field): StructField = {
     val normalizedName = Field.normalize(ddlField).name
     val dataType       = fieldType(ddlField.fieldType)
     StructField(normalizedName, dataType, ddlField.nullability.nullable)
