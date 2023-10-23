@@ -1,0 +1,72 @@
+/*
+ * Copyright (c) 2023-present Snowplow Analytics Ltd. All rights reserved.
+ *
+ * This program is licensed to you under the Snowplow Community License Version 1.0,
+ * and you may not use this file except in compliance with the Snowplow Community License Version 1.0.
+ * You may obtain a copy of the Snowplow Community License Version 1.0 at https://docs.snowplow.io/community-license-1.0
+ */
+package com.snowplowanalytics.snowplow.lakes.tables
+
+import cats.implicits._
+import cats.effect.Sync
+import org.typelevel.log4cats.Logger
+import org.typelevel.log4cats.slf4j.Slf4jLogger
+import org.apache.spark.sql.{DataFrame, SparkSession}
+
+import com.snowplowanalytics.snowplow.lakes.Config
+import com.snowplowanalytics.snowplow.lakes.processing.SparkSchema
+
+abstract class IcebergWriter(config: Config.Iceberg) extends Writer {
+
+  private implicit def logger[F[_]: Sync] = Slf4jLogger.getLogger[F]
+
+  // The name is not important, outside of this app
+  final val sparkCatalog: String = "iceberg_catalog"
+
+  private val defaultTableProperties: Map[String, String] =
+    Map(
+      "write.spark.accept-any-schema" -> "true"
+    )
+
+  def extraTableProperties: Map[String, String] = Map.empty
+
+  override def prepareTable[F[_]: Sync](spark: SparkSession): F[Unit] = {
+    val tableProps = (defaultTableProperties ++ extraTableProperties)
+      .map { case (k, v) =>
+        s"'$k'='$v'"
+      }
+      .mkString(", ")
+
+    Logger[F].info(s"Creating Iceberg table $fqTable if it does not already exist...") >>
+      Sync[F].blocking {
+        spark.sql(s"CREATE NAMESPACE IF NOT EXISTS $sparkCatalog")
+        spark.sql(s"CREATE DATABASE IF NOT EXISTS $fqDatabase")
+        spark.sql(s"""
+          CREATE TABLE IF NOT EXISTS $fqTable
+          (${SparkSchema.ddlForCreate})
+          USING ICEBERG
+          PARTITIONED BY (date(load_tstamp), event_name)
+          TBLPROPERTIES($tableProps)
+        """)
+      }.void
+  }
+
+  override def write[F[_]: Sync](df: DataFrame): F[Unit] =
+    Sync[F].blocking {
+      df.write
+        .format("iceberg")
+        .mode("append")
+        .option("merge-schema", true)
+        .option("check-ordering", false)
+        .saveAsTable(fqTable)
+    }
+
+  // Fully qualified table name
+  private def fqTable: String =
+    s"$sparkCatalog.${config.sparkDatabase}.${config.table}"
+
+  // Fully qualified database name
+  private def fqDatabase: String =
+    s"$sparkCatalog.${config.sparkDatabase}"
+
+}

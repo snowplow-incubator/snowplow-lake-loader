@@ -38,16 +38,17 @@ object Config {
 
   case class Output[+Sink](good: Target, bad: Sink)
 
-  sealed trait Target {
-    def location: URI
-  }
+  sealed trait Target
 
   case class Delta(
     location: URI,
     dataSkippingColumns: List[String]
   ) extends Target
 
-  sealed trait Iceberg extends Target
+  sealed trait Iceberg extends Target {
+    def sparkDatabase: String
+    def table: String
+  }
 
   case class IcebergSnowflake(
     host: String,
@@ -58,8 +59,11 @@ object Config {
     schema: String,
     table: String,
     location: URI
-  ) extends Iceberg
-      with Target
+  ) extends Iceberg {
+
+    /** Spark uses the term "database" where Snowflake uses the term "schema" */
+    override def sparkDatabase: String = schema
+  }
 
   case class IcebergBigLake(
     project: String,
@@ -70,8 +74,9 @@ object Config {
     bqDataset: String,
     region: String, // (of biglake) also known as location in biglake docs.
     location: URI
-  ) extends Iceberg
-      with Target
+  ) extends Iceberg {
+    override def sparkDatabase: String = database
+  }
 
   case class Spark(
     taskRetries: Int,
