@@ -48,6 +48,12 @@ object Config {
     dataSkippingColumns: List[String]
   ) extends Target
 
+  case class Hudi(
+    location: URI,
+    hudiWriteOptions: Map[String, String],
+    hudiTableOptions: Map[String, String]
+  ) extends Target
+
   sealed trait Iceberg extends Target {
     def sparkDatabase: String
     def table: String
