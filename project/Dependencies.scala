@@ -21,11 +21,12 @@ object Dependencies {
     // Spark
     val spark          = "3.4.1"
     val delta          = "2.4.0"
+    val hudi           = "0.14.0"
     val iceberg        = "1.3.1"
     val hadoop         = "3.3.6"
     val gcsConnector   = "hadoop3-2.2.17"
     val biglakeIceberg = "0.1.0"
-    val hiveCommon     = "3.1.3"
+    val hive           = "3.1.3"
 
     // java
     val slf4j    = "2.0.7"
@@ -59,13 +60,14 @@ object Dependencies {
   val sparkCore    = "org.apache.spark"           %% "spark-core"                % V.spark
   val sparkSql     = "org.apache.spark"           %% "spark-sql"                 % V.spark
   val delta        = "io.delta"                   %% "delta-core"                % V.delta
+  val hudi         = "org.apache.hudi"            %% "hudi-spark3.4-bundle"      % V.hudi
   val iceberg      = "org.apache.iceberg"         %% "iceberg-spark-runtime-3.4" % V.iceberg
   val hadoopClient = "org.apache.hadoop"           % "hadoop-client-runtime"     % V.hadoop
   val hadoopAzure  = "org.apache.hadoop"           % "hadoop-azure"              % V.hadoop
   val hadoopAws    = "org.apache.hadoop"           % "hadoop-aws"                % V.hadoop
   val gcsConnector = "com.google.cloud.bigdataoss" % "gcs-connector"             % V.gcsConnector
-  val hiveCommon = ("org.apache.hive" % "hive-common" % V.hiveCommon)
-    .exclude("com.github.joshelser", "dropwizard-metrics-hadoop-metrics2-reporter")
+  val hiveCommon   = "org.apache.hive"             % "hive-common"               % V.hive
+  val hiveExec     = "org.apache.hive"             % "hive-exec"                 % V.hive classifier "core"
 
   // java
   val slf4j         = "org.slf4j"              % "slf4j-simple"   % V.slf4j
@@ -114,10 +116,12 @@ object Dependencies {
 
   val commonRuntimeDependencies = Seq(
     delta        % Runtime,
+    hudi         % Runtime,
     iceberg      % Runtime,
     hadoopClient % Runtime,
     slf4j        % Runtime,
-    protobuf     % Runtime
+    protobuf     % Runtime,
+    hiveExec     % Runtime // Needed for hudi
   )
 
   val awsDependencies = Seq(
@@ -134,7 +138,7 @@ object Dependencies {
 
   val gcpDependencies = Seq(
     pubsub,
-    gcsConnector % Runtime
+    gcsConnector
   ) ++ commonRuntimeDependencies
 
   val biglakeDependencies = Seq(
@@ -154,7 +158,7 @@ object Dependencies {
     ExclusionRule(organization = "org.apache.hadoop", name    = "hadoop-yarn-server-applicationhistoryservice"),
     ExclusionRule(organization = "org.apache.hadoop", name    = "hadoop-yarn-server-common"),
     ExclusionRule(organization = "org.apache.ivy", name       = "ivy"),
-    ExclusionRule(organization = "org.apache.orc")
+    ExclusionRule(organization = "com.github.joshelser", name = "dropwizard-metrics-hadoop-metrics2-reporter")
   )
 
 }
