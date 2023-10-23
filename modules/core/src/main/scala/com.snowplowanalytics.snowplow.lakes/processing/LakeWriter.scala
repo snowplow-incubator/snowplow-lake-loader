@@ -13,10 +13,11 @@ package com.snowplowanalytics.snowplow.lakes.processing
 import cats.data.NonEmptyList
 import cats.effect.Async
 import cats.effect.kernel.Resource
-import org.apache.spark.sql.Row
+import org.apache.spark.sql.{Row, SparkSession}
 import org.apache.spark.sql.types.StructType
 
 import com.snowplowanalytics.snowplow.lakes.Config
+import com.snowplowanalytics.snowplow.lakes.tables.{DeltaWriter, IcebergBigLakeWriter, IcebergSnowflakeWriter, Writer}
 
 trait LakeWriter[F[_]] {
 
@@ -34,20 +35,29 @@ object LakeWriter {
   def build[F[_]: Async](
     config: Config.Spark,
     target: Config.Target
-  ): Resource[F, LakeWriter[F]] =
-    for {
-      spark <- SparkUtils.session[F](config, target)
-    } yield new LakeWriter[F] {
-      def createTable: F[Unit] =
-        SparkUtils.createTable(spark, target)
-
-      def saveDataFrameToDisk(rows: NonEmptyList[Row], schema: StructType): F[DataFrameOnDisk] =
-        SparkUtils.saveDataFrameToDisk(spark, rows, schema)
-
-      def removeDataFramesFromDisk(dataFramesOnDisk: List[DataFrameOnDisk]) =
-        SparkUtils.dropViews(spark, dataFramesOnDisk)
-
-      def commit(dataFramesOnDisk: NonEmptyList[DataFrameOnDisk]): F[Unit] =
-        SparkUtils.commit(spark, target, dataFramesOnDisk)
+  ): Resource[F, LakeWriter[F]] = {
+    val w = target match {
+      case c: Config.Delta            => new DeltaWriter(c)
+      case c: Config.IcebergBigLake   => new IcebergBigLakeWriter(c)
+      case c: Config.IcebergSnowflake => new IcebergSnowflakeWriter(c)
     }
+    SparkUtils.session[F](config, w).map(impl(_, w))
+  }
+
+  private def impl[F[_]: Async](
+    spark: SparkSession,
+    w: Writer
+  ): LakeWriter[F] = new LakeWriter[F] {
+    def createTable: F[Unit] =
+      w.prepareTable(spark)
+
+    def saveDataFrameToDisk(rows: NonEmptyList[Row], schema: StructType): F[DataFrameOnDisk] =
+      SparkUtils.saveDataFrameToDisk(spark, rows, schema)
+
+    def removeDataFramesFromDisk(dataFramesOnDisk: List[DataFrameOnDisk]) =
+      SparkUtils.dropViews(spark, dataFramesOnDisk)
+
+    def commit(dataFramesOnDisk: NonEmptyList[DataFrameOnDisk]): F[Unit] =
+      SparkUtils.commit(spark, w, dataFramesOnDisk)
+  }
 }
