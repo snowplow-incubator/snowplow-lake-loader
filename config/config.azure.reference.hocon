@@ -119,9 +119,9 @@
     "healthProbe": {
       "port": 8000
 
-      # -- Health probe becomes unhealthy if any received event is still not fully processed before
-      # -- this cutoff time
-      "unhealthyLatency": "15 minutes"
+      # -- Health probe becomes unhealthy if events are not being processed faster than this cuttoff
+      # -- time
+      "unhealthyLatency": "1 minute"
     }
   }
 
