@@ -30,6 +30,9 @@ case class MockEnvironment(state: Ref[IO, Vector[MockEnvironment.Action]], envir
 
 object MockEnvironment {
 
+  /** All tests can use the same window duration */
+  val WindowDuration = 42.seconds
+
   sealed trait Action
   object Action {
     case class Checkpointed(tokens: List[Unique.Token]) extends Action
@@ -38,6 +41,13 @@ object MockEnvironment {
     case class SavedDataFrameToDisk(df: DataFrameOnDisk) extends Action
     case class RemovedDataFramesFromDisk(names: List[String]) extends Action
     case class CommittedToTheLake(names: List[String]) extends Action
+
+    /* Metrics */
+    case class AddedReceivedCountMetric(count: Int) extends Action
+    case class AddedBadCountMetric(count: Int) extends Action
+    case class AddedCommittedCountMetric(count: Int) extends Action
+    case class SetLatencyMetric(latency: FiniteDuration) extends Action
+    case class SetProcessingLatencyMetric(latency: FiniteDuration) extends Action
   }
   import Action._
 
@@ -62,7 +72,7 @@ object MockEnvironment {
         resolver        = Resolver[IO](Nil, None),
         httpClient      = testHttpClient,
         lakeWriter      = testLakeWriter(state, counter),
-        metrics         = TestSparkEnvironment.testMetrics,
+        metrics         = testMetrics(state),
         inMemBatchBytes = 1000000L,
         cpuParallelism  = 1,
         windowing       = EventProcessingConfig.TimedWindows(1.minute, 1.0)
@@ -94,6 +104,7 @@ object MockEnvironment {
         Stream.emits(windows).flatMap { batches =>
           Stream
             .emits(batches)
+            .onFinalize(IO.sleep(WindowDuration))
             .through(processor)
             .chunks
             .evalMap { chunk =>
@@ -111,5 +122,24 @@ object MockEnvironment {
 
   private def testHttpClient: Client[IO] = Client[IO] { _ =>
     Resource.raiseError[IO, Nothing, Throwable](new RuntimeException("http failure"))
+  }
+
+  def testMetrics(ref: Ref[IO, Vector[Action]]): Metrics[IO] = new Metrics[IO] {
+    def addReceived(count: Int): IO[Unit] =
+      ref.update(_ :+ AddedReceivedCountMetric(count))
+
+    def addBad(count: Int): IO[Unit] =
+      ref.update(_ :+ AddedBadCountMetric(count))
+
+    def addCommitted(count: Int): IO[Unit] =
+      ref.update(_ :+ AddedCommittedCountMetric(count))
+
+    def setLatency(latency: FiniteDuration): IO[Unit] =
+      ref.update(_ :+ SetLatencyMetric(latency))
+
+    def setProcessingLatency(latency: FiniteDuration): IO[Unit] =
+      ref.update(_ :+ SetProcessingLatencyMetric(latency))
+
+    def report: Stream[IO, Nothing] = Stream.never[IO]
   }
 }

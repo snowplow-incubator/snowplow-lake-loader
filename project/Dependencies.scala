@@ -107,6 +107,7 @@ object Dependencies {
     delta,
     specs2,
     catsEffectSpecs2,
+    catsEffectTestkit,
     slf4j % Test
   )
 

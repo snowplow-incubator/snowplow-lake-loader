@@ -81,6 +81,7 @@ object TestSparkEnvironment {
     def addReceived(count: Int): IO[Unit]                       = IO.unit
     def addBad(count: Int): IO[Unit]                            = IO.unit
     def addCommitted(count: Int): IO[Unit]                      = IO.unit
+    def setLatency(latency: FiniteDuration): IO[Unit]           = IO.unit
     def setProcessingLatency(latency: FiniteDuration): IO[Unit] = IO.unit
     def report: Stream[IO, Nothing]                             = Stream.never[IO]
   }

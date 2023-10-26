@@ -23,14 +23,14 @@ import org.apache.spark.sql.Row
 
 import java.nio.charset.StandardCharsets
 import java.nio.ByteBuffer
-import scala.concurrent.duration.FiniteDuration
+import scala.concurrent.duration.{DurationLong, FiniteDuration}
 
 import com.snowplowanalytics.iglu.client.resolver.registries.{Http4sRegistryLookup, RegistryLookup}
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
 import com.snowplowanalytics.snowplow.badrows.{BadRow, Processor => BadRowProcessor}
 import com.snowplowanalytics.snowplow.badrows.Payload.{RawPayload => BadRowRawPayload}
 import com.snowplowanalytics.snowplow.sources.{EventProcessingConfig, EventProcessor, TokenedEvents}
-import com.snowplowanalytics.snowplow.lakes.Environment
+import com.snowplowanalytics.snowplow.lakes.{Environment, Metrics}
 import com.snowplowanalytics.snowplow.runtime.processing.BatchUp
 import com.snowplowanalytics.snowplow.runtime.syntax.foldable._
 import com.snowplowanalytics.snowplow.loaders.transform.{NonAtomicFields, SchemaSubVersion, TabledEntity, Transform, TypedTabledEntity}
@@ -90,7 +90,8 @@ object Processing {
     badProcessor: BadRowProcessor,
     ref: Ref[F, WindowState]
   ): Pipe[F, TokenedEvents, Nothing] =
-    _.through(rememberTokens(ref))
+    _.through(setLatency(env.metrics))
+      .through(rememberTokens(ref))
       .through(incrementReceivedCount(env))
       .through(parseBytes(env, badProcessor))
       .through(handleParseFailures(env))
@@ -135,6 +136,20 @@ object Processing {
           }
       }
     }.drain
+
+  private def setLatency[F[_]: Sync](metrics: Metrics[F]): Pipe[F, TokenedEvents, TokenedEvents] =
+    _.evalTap {
+      _.earliestSourceTstamp match {
+        case Some(t) =>
+          for {
+            now <- Sync[F].realTime
+            latency = now - t.toEpochMilli.millis
+            _ <- metrics.setLatency(latency)
+          } yield ()
+        case None =>
+          Applicative[F].unit
+      }
+    }
 
   private def rememberTokens[F[_]: Functor](ref: Ref[F, WindowState]): Pipe[F, TokenedEvents, Chunk[ByteBuffer]] =
     _.evalMap { case TokenedEvents(events, token, _) =>
