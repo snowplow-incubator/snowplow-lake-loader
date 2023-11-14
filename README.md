@@ -8,7 +8,7 @@
 
 This project contains applications required to load Snowplow data into Open Table Formats.
 
-Lake Loader 0.1.3 supports [Delta](https://docs.delta.io/latest/index.html) format only. Future releases will add support for [Iceberg](https://iceberg.apache.org/docs/latest/) and [Hudi](https://hudi.apache.org/docs/overview/) as output formats.
+Lake Loader 0.1.4 supports [Delta](https://docs.delta.io/latest/index.html) format only. Future releases will add support for [Iceberg](https://iceberg.apache.org/docs/latest/) and [Hudi](https://hudi.apache.org/docs/overview/) as output formats.
 
 Check out [the example config files](./config) for how to configure your lake loader.
 
@@ -22,7 +22,7 @@ Basic usage:
 docker run \
   -v /path/to/config.hocon:/var/config.hocon \
   -v /path/to/iglu.json:/var/iglu.json \
-  snowplow/lake-loader-azure:0.1.3 \
+  snowplow/lake-loader-azure:0.1.4 \
   --config /var/config.hocon \
   --iglu-config /var/iglu.json
 ```
@@ -35,7 +35,7 @@ The GCP lake loader reads the stream of enriched events from Pubsub and writes t
 docker run \
   -v /path/to/config.hocon:/var/config.hocon \
   -v /path/to/iglu.json:/var/iglu.json \
-  snowplow/lake-loader-gcp:0.1.3 \
+  snowplow/lake-loader-gcp:0.1.4 \
   --config /var/config.hocon \
   --iglu-config /var/iglu.json
 ```
@@ -66,7 +66,7 @@ Licensed under the [Snowplow Community License](https://docs.snowplow.io/communi
 [build-image]: https://github.com/snowplow-incubator/snowplow-lake-loader/workflows/CI/badge.svg
 [build]: https://github.com/snowplow-incubator/snowplow-lake-loader/actions/workflows/ci.yml
 
-[release-image]: https://img.shields.io/badge/release-0.1.3-blue.svg?style=flat
+[release-image]: https://img.shields.io/badge/release-0.1.4-blue.svg?style=flat
 [releases]: https://github.com/snowplow-incubator/snowplow-lake-loader/releases
 
 [license]: https://docs.snowplow.io/docs/contributing/community-license-faq/
