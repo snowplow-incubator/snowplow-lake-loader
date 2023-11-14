@@ -8,7 +8,7 @@
 package com.snowplowanalytics.snowplow.lakes.processing
 
 import cats.effect.IO
-import fs2.Stream
+import fs2.{Chunk, Stream}
 import org.specs2.Specification
 import cats.effect.testing.specs2.CatsEffect
 import cats.effect.testkit.TestControl
@@ -243,7 +243,7 @@ object ProcessingSpec {
       } yield {
         val event1 = Event.minimal(eventId1, collectorTstamp, "0.0.0", "0.0.0")
         val event2 = Event.minimal(eventId2, collectorTstamp, "0.0.0", "0.0.0")
-        val serialized = List(event1, event2).map { e =>
+        val serialized = Chunk(event1, event2).map { e =>
           StandardCharsets.UTF_8.encode(e.toTsv)
         }
         TokenedEvents(serialized, ack, None)
@@ -253,7 +253,7 @@ object ProcessingSpec {
   def generateBadlyFormatted: Stream[IO, TokenedEvents] =
     Stream.eval {
       IO.unique.map { token =>
-        val serialized = List("nonsense1", "nonsense2").map(StandardCharsets.UTF_8.encode(_))
+        val serialized = Chunk("nonsense1", "nonsense2").map(StandardCharsets.UTF_8.encode(_))
         TokenedEvents(serialized, token, None)
       }
     }.repeat

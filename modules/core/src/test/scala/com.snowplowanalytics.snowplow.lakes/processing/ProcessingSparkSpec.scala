@@ -11,7 +11,7 @@ import cats.effect.IO
 import cats.effect.kernel.Resource
 import cats.effect.testing.specs2.CatsEffect
 import io.circe.Json
-import fs2.Stream
+import fs2.{Chunk, Stream}
 import org.specs2.Specification
 import org.specs2.matcher.MatchResult
 
@@ -140,7 +140,7 @@ object ProcessingSparkSpec {
         val event2 = Event
           .minimal(eventId2, collectorTstamp, "0.0.0", "0.0.0")
           .copy(unstruct_event = ueGood701)
-        val serialized = List(event1, event2).map { e =>
+        val serialized = Chunk(event1, event2).map { e =>
           StandardCharsets.UTF_8.encode(e.toTsv)
         }
         (TokenedEvents(serialized, ack, None), List(event1, event2))
@@ -161,7 +161,7 @@ object ProcessingSparkSpec {
         val event2 = Event
           .minimal(eventId2, collectorTstamp, "0.0.0", "0.0.0")
           .copy(unstruct_event = ueBadEvolution101)
-        val serialized = List(event1, event2).map { e =>
+        val serialized = Chunk(event1, event2).map { e =>
           StandardCharsets.UTF_8.encode(e.toTsv)
         }
         (TokenedEvents(serialized, ack, None), List(event1, event2))
