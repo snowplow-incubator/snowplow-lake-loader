@@ -35,7 +35,7 @@ object Dependencies {
     val sentry   = "6.25.2"
 
     // Snowplow
-    val streams    = "0.1.0"
+    val streams    = "0.2.0-M1"
     val igluClient = "3.0.0"
 
     // Transitive overrides
