@@ -27,6 +27,7 @@ import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
 import com.snowplowanalytics.snowplow.badrows.{BadRow, Processor => BadRowProcessor}
 import com.snowplowanalytics.snowplow.badrows.Payload.{RawPayload => BadRowRawPayload}
 import com.snowplowanalytics.snowplow.sources.{EventProcessingConfig, EventProcessor, TokenedEvents}
+import com.snowplowanalytics.snowplow.sinks.ListOfList
 import com.snowplowanalytics.snowplow.lakes.{Environment, Metrics}
 import com.snowplowanalytics.snowplow.runtime.processing.BatchUp
 import com.snowplowanalytics.snowplow.runtime.syntax.foldable._
@@ -52,7 +53,7 @@ object Processing {
   )
 
   private case class Batched(
-    events: Vector[Event], // Vector for fast concatentation when batching-up
+    events: ListOfList[Event],
     entities: Map[TabledEntity, Set[SchemaSubVersion]],
     originalBytes: Long
   )
@@ -92,7 +93,6 @@ object Processing {
       .through(incrementReceivedCount(env))
       .through(parseBytes(env, badProcessor))
       .through(handleParseFailures(env))
-      .through(toBatched)
       .through(BatchUp.noTimeout(env.inMemBatchBytes))
       .through(sinkParsedBatch(env, badProcessor, ref))
 
@@ -187,25 +187,25 @@ object Processing {
       } yield ParseResult(events, badRows, numBytes)
     }
 
-  private def toBatched[F[_]: Applicative]: Pipe[F, ParseResult, Batched] =
-    _.map { case ParseResult(events, _, numBytes) =>
-      val entities = Foldable[List].foldMap(events)(TabledEntity.forEvent(_))
-      Batched(events.toVector, entities, numBytes)
+  private implicit def batchable: BatchUp.Batchable[ParseResult, Batched] = new BatchUp.Batchable[ParseResult, Batched] {
+    def combine(b: Batched, a: ParseResult): Batched = {
+      val entities = Foldable[List].foldMap(a.events)(TabledEntity.forEvent(_))
+      Batched(b.events.prepend(a.events), entities |+| b.entities, a.originalBytes + b.originalBytes)
     }
-
-  private implicit def batchable: BatchUp.Batchable[Batched] = new BatchUp.Batchable[Batched] {
-    def combine(x: Batched, y: Batched): Batched =
-      Batched(x.events |+| y.events, x.entities |+| y.entities, x.originalBytes + y.originalBytes)
-    def weightOf(a: Batched): Long = a.originalBytes
+    def single(a: ParseResult): Batched = {
+      val entities = Foldable[List].foldMap(a.events)(TabledEntity.forEvent(_))
+      Batched(ListOfList.of(List(a.events)), entities, a.originalBytes)
+    }
+    def weightOf(a: ParseResult): Long = a.originalBytes
   }
 
   // The pure computation is wrapped in a F to help the Cats Effect runtime to periodically cede to other fibers
   private def transformToSpark[F[_]: Sync](
     processor: BadRowProcessor,
-    events: Vector[Event],
+    events: ListOfList[Event],
     entities: NonAtomicFields.Result
   ): F[(List[BadRow], List[Row])] =
-    Foldable[Vector].traverseSeparateUnordered(events) { event =>
+    Foldable[ListOfList].traverseSeparateUnordered(events) { event =>
       Sync[F].delay {
         Transform
           .transformEvent[Any](processor, SparkCaster, event, entities)
@@ -220,9 +220,9 @@ object Processing {
 
   private def sendFailedEvents[F[_]: Applicative, A](env: Environment[F], bad: List[BadRow]): F[Unit] =
     if (bad.nonEmpty) {
-      val serialized = bad.map(_.compact.getBytes(StandardCharsets.UTF_8))
+      val serialized = bad.map(_.compactByteArray)
       env.metrics.addBad(bad.size) *>
-        env.badSink.sinkSimple(serialized)
+        env.badSink.sinkSimple(ListOfList.of(List(serialized)))
     } else Applicative[F].unit
 
   private def finalizeWindow[F[_]: Sync](

@@ -114,7 +114,7 @@ object MockEnvironment {
     }
 
   private def testSink(ref: Ref[IO, Vector[Action]]): Sink[IO] = Sink[IO] { batch =>
-    ref.update(_ :+ SentToBad(batch.size))
+    ref.update(_ :+ SentToBad(batch.asIterable.size))
   }
 
   private def testHttpClient: Client[IO] = Client[IO] { _ =>
