@@ -42,7 +42,7 @@ private[processing] object SparkUtils {
         .appName("snowplow-lake-loader")
         .master(s"local[*, ${config.taskRetries}]")
 
-    builder.config(writer.sparkConfig ++ config.conf)
+    builder.config(sparkConfigOptions(config, writer))
 
     val openLogF  = Logger[F].info("Creating the global spark session...")
     val closeLogF = Logger[F].info("Closing the global spark session...")
@@ -51,6 +51,12 @@ private[processing] object SparkUtils {
     Resource
       .make(openLogF >> buildF)(s => closeLogF >> Sync[F].blocking(s.close())) <*
       SnowplowOverrideShutdownHook.resource[F]
+  }
+
+  private def sparkConfigOptions(config: Config.Spark, writer: Writer): Map[String, String] = {
+    val gcpUserAgentKey   = "fs.gs.storage.http.headers.user-agent"
+    val gcpUserAgentValue = s"${config.gcpUserAgent.productName}/lake-loader (GPN:Snowplow;)"
+    writer.sparkConfig ++ config.conf + (gcpUserAgentKey -> gcpUserAgentValue)
   }
 
   def saveDataFrameToDisk[F[_]: Sync](
