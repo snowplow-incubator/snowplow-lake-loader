@@ -84,9 +84,12 @@ object Config {
     override def sparkDatabase: String = database
   }
 
+  case class GcpUserAgent(productName: String)
+
   case class Spark(
     taskRetries: Int,
-    conf: Map[String, String]
+    conf: Map[String, String],
+    gcpUserAgent: GcpUserAgent
   )
 
   case class Metrics(
@@ -112,6 +115,7 @@ object Config {
     implicit val configuration = Configuration.default.withDiscriminator("type")
     implicit val target        = deriveConfiguredDecoder[Target]
     implicit val output        = deriveConfiguredDecoder[Output[Sink]]
+    implicit val gcpUserAgent  = deriveConfiguredDecoder[GcpUserAgent]
     implicit val spark         = deriveConfiguredDecoder[Spark]
     implicit val sentryDecoder = deriveConfiguredDecoder[SentryM[Option]]
       .map[Option[Sentry]] {
@@ -120,7 +124,7 @@ object Config {
         case SentryM(None, _) =>
           None
       }
-    implicit val metricsDecoder = deriveConfiguredDecoder[Metrics]
+    implicit val metricsDecoder     = deriveConfiguredDecoder[Metrics]
     implicit val healthProbeDecoder = deriveConfiguredDecoder[HealthProbe]
     implicit val monitoringDecoder  = deriveConfiguredDecoder[Monitoring]
     deriveConfiguredDecoder[Config[Source, Sink]]
