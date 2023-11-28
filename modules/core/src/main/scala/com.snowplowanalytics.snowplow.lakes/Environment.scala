@@ -7,7 +7,7 @@
  */
 package com.snowplowanalytics.snowplow.lakes
 
-import cats.Functor
+import cats.{Functor, Monad}
 import cats.implicits._
 import cats.effect.{Async, Resource, Sync}
 import cats.effect.unsafe.implicits.global
@@ -48,10 +48,11 @@ object Environment {
       httpClient <- BlazeClientBuilder[F].withExecutionContext(global.compute).resource
       badSink <- toSink(config.main.output.bad)
       windowing <- Resource.eval(EventProcessingConfig.TimedWindows.build(config.main.windowing))
-      lakeWriter <- LakeWriter.build[F](config.main.spark, config.main.output.good)
+      (lakeWriter, lakeWriterHealth) <- LakeWriter.build[F](config.main.spark, config.main.output.good)
       sourceAndAck <- Resource.eval(toSource(config.main.input))
       metrics <- Resource.eval(Metrics.build(config.main.monitoring.metrics))
-      _ <- HealthProbe.resource(config.main.monitoring.healthProbe.port, isHealthy(config.main.monitoring.healthProbe, sourceAndAck))
+      isHealthy = combineIsHealthy(sourceIsHealthy(config.main.monitoring.healthProbe, sourceAndAck), lakeWriterHealth)
+      _ <- HealthProbe.resource(config.main.monitoring.healthProbe.port, isHealthy)
     } yield Environment(
       appInfo         = appInfo,
       source          = sourceAndAck,
@@ -105,11 +106,16 @@ object Environment {
       .setScale(0, BigDecimal.RoundingMode.UP)
       .toInt
 
-  private def isHealthy[F[_]: Functor](config: Config.HealthProbe, source: SourceAndAck[F]): F[HealthProbe.Status] =
-    source.processingLatency.map { latency =>
-      if (latency > config.unhealthyLatency)
-        HealthProbe.Unhealthy(show"Processing latency is $latency")
-      else
-        HealthProbe.Healthy
+  private def sourceIsHealthy[F[_]: Functor](config: Config.HealthProbe, source: SourceAndAck[F]): F[HealthProbe.Status] =
+    source.isHealthy(config.unhealthyLatency).map {
+      case SourceAndAck.Healthy              => HealthProbe.Healthy
+      case unhealthy: SourceAndAck.Unhealthy => HealthProbe.Unhealthy(unhealthy.show)
+    }
+
+  // TODO: This should move to common-streams
+  private def combineIsHealthy[F[_]: Monad](status: F[HealthProbe.Status]*): F[HealthProbe.Status] =
+    status.toList.foldM[F, HealthProbe.Status](HealthProbe.Healthy) {
+      case (unhealthy: HealthProbe.Unhealthy, _) => Monad[F].pure(unhealthy)
+      case (HealthProbe.Healthy, other)          => other
     }
 }

@@ -16,7 +16,7 @@ import fs2.Stream
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.types.StructType
 
-import scala.concurrent.duration.{Duration, DurationInt, FiniteDuration}
+import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
 import com.snowplowanalytics.iglu.client.Resolver
 import com.snowplowanalytics.snowplow.sources.{EventProcessingConfig, EventProcessor, SourceAndAck, TokenedEvents}
@@ -110,7 +110,8 @@ object MockEnvironment {
             .drain
         }
 
-      def processingLatency: IO[FiniteDuration] = IO.pure(Duration.Zero)
+      def isHealthy(maxAllowedProcessingLatency: FiniteDuration): IO[SourceAndAck.HealthStatus] =
+        IO.pure(SourceAndAck.Healthy)
     }
 
   private def testSink(ref: Ref[IO, Vector[Action]]): Sink[IO] = Sink[IO] { batch =>
