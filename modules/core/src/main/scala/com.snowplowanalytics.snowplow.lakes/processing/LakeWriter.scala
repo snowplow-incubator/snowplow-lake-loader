@@ -10,12 +10,13 @@
 
 package com.snowplowanalytics.snowplow.lakes.processing
 
+import cats.implicits._
 import cats.data.NonEmptyList
-import cats.effect.Async
-import cats.effect.kernel.Resource
+import cats.effect.{Async, Ref, Resource}
 import org.apache.spark.sql.{Row, SparkSession}
 import org.apache.spark.sql.types.StructType
 
+import com.snowplowanalytics.snowplow.runtime.HealthProbe
 import com.snowplowanalytics.snowplow.lakes.Config
 import com.snowplowanalytics.snowplow.lakes.tables.{DeltaWriter, HudiWriter, IcebergBigLakeWriter, IcebergSnowflakeWriter, Writer}
 
@@ -35,22 +36,29 @@ object LakeWriter {
   def build[F[_]: Async](
     config: Config.Spark,
     target: Config.Target
-  ): Resource[F, LakeWriter[F]] = {
+  ): Resource[F, (LakeWriter[F], F[HealthProbe.Status])] = {
     val w = target match {
       case c: Config.Delta            => new DeltaWriter(c)
       case c: Config.Hudi             => new HudiWriter(c)
       case c: Config.IcebergBigLake   => new IcebergBigLakeWriter(c)
       case c: Config.IcebergSnowflake => new IcebergSnowflakeWriter(c)
     }
-    SparkUtils.session[F](config, w).map(impl(_, w))
+    for {
+      session <- SparkUtils.session[F](config, w)
+      isHealthy <- Resource.eval(Ref[F].of(initialHealthStatus))
+    } yield (impl(session, w, isHealthy), isHealthy.get)
   }
+
+  private def initialHealthStatus: HealthProbe.Status =
+    HealthProbe.Unhealthy("Destination table not initialized yet")
 
   private def impl[F[_]: Async](
     spark: SparkSession,
-    w: Writer
+    w: Writer,
+    isHealthy: Ref[F, HealthProbe.Status]
   ): LakeWriter[F] = new LakeWriter[F] {
     def createTable: F[Unit] =
-      w.prepareTable(spark)
+      w.prepareTable(spark) <* isHealthy.set(HealthProbe.Healthy)
 
     def saveDataFrameToDisk(rows: NonEmptyList[Row], schema: StructType): F[DataFrameOnDisk] =
       SparkUtils.saveDataFrameToDisk(spark, rows, schema)

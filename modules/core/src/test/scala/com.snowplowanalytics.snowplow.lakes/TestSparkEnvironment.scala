@@ -16,7 +16,7 @@ import org.http4s.client.Client
 import fs2.Stream
 
 import java.nio.file.{Files, Path}
-import scala.concurrent.duration.{Duration, DurationInt, FiniteDuration}
+import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
 import com.snowplowanalytics.iglu.client.Resolver
 import com.snowplowanalytics.snowplow.sources.{EventProcessingConfig, EventProcessor, SourceAndAck, TokenedEvents}
@@ -33,7 +33,7 @@ object TestSparkEnvironment {
 
   def build(windows: List[List[TokenedEvents]]): Resource[IO, TestSparkEnvironment] = for {
     tmpDir <- Resource.eval(IO.blocking(Files.createTempDirectory("lake-loader")))
-    lakeWriter <- LakeWriter.build[IO](TestConfig.defaults.spark, targetConfig(tmpDir))
+    (lakeWriter, _) <- LakeWriter.build[IO](TestConfig.defaults.spark, targetConfig(tmpDir))
   } yield {
     val env = Environment(
       appInfo         = appInfo,
@@ -61,7 +61,8 @@ object TestSparkEnvironment {
             .drain
         }
 
-      def processingLatency: IO[FiniteDuration] = IO.pure(Duration.Zero)
+      def isHealthy(maxAllowedProcessingLatency: FiniteDuration): IO[SourceAndAck.HealthStatus] =
+        IO.pure(SourceAndAck.Healthy)
     }
 
   private def testHttpClient: Client[IO] = Client[IO] { _ =>
