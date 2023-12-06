@@ -72,10 +72,9 @@ object Dependencies {
   val hiveExec     = "org.apache.hive"             % "hive-exec"                 % V.hive classifier "core"
 
   // java
-  val slf4j         = "org.slf4j"              % "slf4j-simple"   % V.slf4j
-  val azureIdentity = "com.azure"              % "azure-identity" % V.azureSdk
-  val sentry        = "io.sentry"              % "sentry"         % V.sentry
-  val sts           = "software.amazon.awssdk" % "sts"            % V.awsSdk
+  val slf4j         = "org.slf4j" % "slf4j-simple"   % V.slf4j
+  val azureIdentity = "com.azure" % "azure-identity" % V.azureSdk
+  val sentry        = "io.sentry" % "sentry"         % V.sentry
 
   // transitive overrides
   val protobuf   = "com.google.protobuf"        % "protobuf-java"                      % V.protobuf
@@ -128,8 +127,7 @@ object Dependencies {
 
   val awsDependencies = Seq(
     kinesis,
-    sts       % Runtime,
-    hadoopAws % Runtime
+    hadoopAws
   ) ++ commonRuntimeDependencies
 
   val azureDependencies = Seq(
