@@ -13,7 +13,8 @@ lazy val root = project
   .aggregate(
     core,
     azure,
-    gcp
+    gcp,
+    aws
   )
 
 lazy val core: Project = project
