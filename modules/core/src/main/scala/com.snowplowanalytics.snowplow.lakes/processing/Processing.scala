@@ -180,9 +180,8 @@ object Processing {
         numBytes <- Sync[F].delay(Foldable[Chunk].sumBytes(chunk))
         (badRows, events) <- Foldable[Chunk].traverseSeparateUnordered(chunk) { byteBuffer =>
                                Sync[F].delay {
-                                 val stringified = StandardCharsets.UTF_8.decode(byteBuffer).toString
-                                 Event.parse(stringified).toEither.leftMap { failure =>
-                                   val payload = BadRowRawPayload(stringified)
+                                 Event.parseBytes(byteBuffer).toEither.leftMap { failure =>
+                                   val payload = BadRowRawPayload(StandardCharsets.UTF_8.decode(byteBuffer).toString)
                                    BadRow.LoaderParsingError(processor, failure, payload)
                                  }
                                }
