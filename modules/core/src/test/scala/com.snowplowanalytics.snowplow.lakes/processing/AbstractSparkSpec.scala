@@ -15,19 +15,20 @@ import fs2.{Chunk, Stream}
 import org.specs2.Specification
 import org.specs2.matcher.MatchResult
 
-import org.apache.spark.sql.SparkSession
-import io.delta.tables.DeltaTable
+import org.apache.spark.sql.{DataFrame, SparkSession}
 
 import scala.concurrent.duration.DurationInt
 import java.nio.charset.StandardCharsets
+import java.nio.file.Path
 
 import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer, SelfDescribingData}
 import com.snowplowanalytics.snowplow.analytics.scalasdk.{Event, SnowplowEvent}
 import com.snowplowanalytics.snowplow.lakes.TestSparkEnvironment
 import com.snowplowanalytics.snowplow.sources.TokenedEvents
 
-class ProcessingSparkSpec extends Specification with CatsEffect {
-  import ProcessingSparkSpec._
+/** Base Spec for testing different output formats of this loader */
+abstract class AbstractSparkSpec extends Specification with CatsEffect {
+  import AbstractSparkSpec._
 
   override val Timeout = 60.seconds
 
@@ -37,11 +38,23 @@ class ProcessingSparkSpec extends Specification with CatsEffect {
     Successfully write parquet file when there is an invalid schema evolution $e2
   """
 
+  /* Abstract definitions */
+
+  /** Reads the table back into memory, so we can make assertions on the app's output */
+  def readTable(spark: SparkSession, tmpDir: Path): DataFrame
+
+  /** Spark config used only while reading table back into memory for assertions */
+  def sparkConfig(tmpDir: Path): Map[String, String]
+
+  def target: TestSparkEnvironment.Target
+
+  /* The specs */
+
   def e1 = {
 
     val resources = for {
       inputs <- Resource.eval(generateEvents.take(2).compile.toList)
-      env <- TestSparkEnvironment.build(List(inputs.map(_._1)))
+      env <- TestSparkEnvironment.build(target, List(inputs.map(_._1)))
     } yield (inputs.map(_._2), env)
 
     val result = resources.use { case (inputEvents, env) =>
@@ -53,11 +66,9 @@ class ProcessingSparkSpec extends Specification with CatsEffect {
     }
 
     result.flatMap { case (inputEvents, tmpDir) =>
-      sparkForAssertions.use { spark =>
-        IO.delay {
+      sparkForAssertions(sparkConfig(tmpDir)).use { spark =>
+        IO.blocking(readTable(spark, tmpDir)).map { df =>
           import spark.implicits._
-          val tbl  = DeltaTable.forPath(spark, tmpDir.resolve("events").toString)
-          val df   = tbl.toDF
           val cols = df.columns.toSeq
 
           val inputEventIds  = inputEvents.flatten.map(_.event_id.toString)
@@ -84,7 +95,7 @@ class ProcessingSparkSpec extends Specification with CatsEffect {
 
     val resources = for {
       inputs <- Resource.eval(generateEventsBadEvolution.take(2).compile.toList)
-      env <- TestSparkEnvironment.build(List(inputs.map(_._1)))
+      env <- TestSparkEnvironment.build(target, List(inputs.map(_._1)))
     } yield (inputs.map(_._2), env)
 
     val result = resources.use { case (inputEvents, env) =>
@@ -96,11 +107,9 @@ class ProcessingSparkSpec extends Specification with CatsEffect {
     }
 
     result.flatMap { case (inputEvents, tmpDir) =>
-      sparkForAssertions.use { spark =>
-        IO.delay {
+      sparkForAssertions(sparkConfig(tmpDir)).use { spark =>
+        IO.blocking(readTable(spark, tmpDir)).map { df =>
           import spark.implicits._
-          val tbl  = DeltaTable.forPath(spark, tmpDir.resolve("events").toString)
-          val df   = tbl.toDF
           val cols = df.columns.toSeq
 
           val inputEventIds  = inputEvents.flatten.map(_.event_id.toString)
@@ -123,9 +132,9 @@ class ProcessingSparkSpec extends Specification with CatsEffect {
   }
 }
 
-object ProcessingSparkSpec {
+object AbstractSparkSpec {
 
-  def generateEvents: Stream[IO, (TokenedEvents, List[Event])] =
+  private def generateEvents: Stream[IO, (TokenedEvents, List[Event])] =
     Stream.eval {
       for {
         ack <- IO.unique
@@ -147,7 +156,7 @@ object ProcessingSparkSpec {
       }
     }.repeat
 
-  def generateEventsBadEvolution: Stream[IO, (TokenedEvents, List[Event])] =
+  private def generateEventsBadEvolution: Stream[IO, (TokenedEvents, List[Event])] =
     Stream.eval {
       for {
         ack <- IO.unique
@@ -169,14 +178,13 @@ object ProcessingSparkSpec {
     }.repeat
 
   /** A spark session just used for making assertions, not for running the code under test */
-  def sparkForAssertions: Resource[IO, SparkSession] = {
+  private def sparkForAssertions(config: Map[String, String]): Resource[IO, SparkSession] = {
     val io = IO.blocking {
       SparkSession
         .builder()
         .appName("testing")
         .master(s"local[*]")
-        .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
-        .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
+        .config(config)
         .getOrCreate()
     }
     Resource.make(io)(s => IO.blocking(s.close()))
@@ -184,7 +192,7 @@ object ProcessingSparkSpec {
 
   /** Some unstructured events * */
 
-  val ueGood700 = SnowplowEvent.UnstructEvent(
+  private val ueGood700 = SnowplowEvent.UnstructEvent(
     Some(
       SelfDescribingData(
         SchemaKey("myvendor", "goodschema", "jsonschema", SchemaVer.Full(7, 0, 0)),
@@ -195,7 +203,7 @@ object ProcessingSparkSpec {
     )
   )
 
-  val ueGood701 = SnowplowEvent.UnstructEvent(
+  private val ueGood701 = SnowplowEvent.UnstructEvent(
     Some(
       SelfDescribingData(
         SchemaKey("myvendor", "goodschema", "jsonschema", SchemaVer.Full(7, 0, 1)),
@@ -207,7 +215,7 @@ object ProcessingSparkSpec {
     )
   )
 
-  val ueBadEvolution100 = SnowplowEvent.UnstructEvent(
+  private val ueBadEvolution100 = SnowplowEvent.UnstructEvent(
     Some(
       SelfDescribingData(
         SchemaKey("myvendor", "badevolution", "jsonschema", SchemaVer.Full(1, 0, 0)),
@@ -218,7 +226,7 @@ object ProcessingSparkSpec {
     )
   )
 
-  val ueBadEvolution101 = SnowplowEvent.UnstructEvent(
+  private val ueBadEvolution101 = SnowplowEvent.UnstructEvent(
     Some(
       SelfDescribingData(
         SchemaKey("myvendor", "badevolution", "jsonschema", SchemaVer.Full(1, 0, 1)),

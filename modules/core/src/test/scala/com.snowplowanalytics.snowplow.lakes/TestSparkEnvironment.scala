@@ -28,9 +28,15 @@ case class TestSparkEnvironment(
 
 object TestSparkEnvironment {
 
-  def build(windows: List[List[TokenedEvents]]): Resource[IO, TestSparkEnvironment] = for {
+  sealed trait Target
+  case object Delta extends Target
+  case object Hudi extends Target
+  case object Iceberg extends Target
+
+  def build(target: Target, windows: List[List[TokenedEvents]]): Resource[IO, TestSparkEnvironment] = for {
     tmpDir <- Resource.eval(IO.blocking(Files.createTempDirectory("lake-loader")))
-    (lakeWriter, _) <- LakeWriter.build[IO](TestConfig.defaults.spark, targetConfig(tmpDir))
+    testConfig = TestConfig.defaults(configOverrides(target, tmpDir))
+    (lakeWriter, _) <- LakeWriter.build[IO](testConfig.spark, testConfig.output.good)
   } yield {
     val env = Environment(
       appInfo         = appInfo,
@@ -66,7 +72,34 @@ object TestSparkEnvironment {
     Resource.raiseError[IO, Nothing, Throwable](new RuntimeException("http failure"))
   }
 
-  private def targetConfig(tmp: Path) = Config.Delta(tmp.resolve("events").toUri, List("load_tstamp", "collector_tstamp"))
+  private def configOverrides(target: Target, tmp: Path): String = {
+    val location = tmp.resolve("events").toUri
+    target match {
+      case Delta =>
+        s"""
+        output.good: {
+          type: "Delta"
+          location: "$location"
+        }
+        """
+      case Hudi =>
+        s"""
+        output.good: {
+          type: "Hudi"
+          location: "$location"
+        }
+        """
+      case Iceberg =>
+        s"""
+        output.good: {
+          type: "IcebergHadoop"
+          database: "test"
+          table: "events"
+          location: "${tmp.toUri}"
+        }
+        """
+    }
+  }
 
   val appInfo = new AppInfo {
     def name        = "lake-loader-test"

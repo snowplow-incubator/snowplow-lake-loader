@@ -9,24 +9,12 @@ package com.snowplowanalytics.snowplow.lakes.tables
 
 import com.snowplowanalytics.snowplow.lakes.Config
 
-class IcebergBigLakeWriter(config: Config.IcebergBigLake) extends IcebergWriter(config) {
-
+class IcebergHadoopWriter(config: Config.IcebergHadoop) extends IcebergWriter.WithDefaults(config) {
   override def sparkConfig: Map[String, String] =
     Map(
       "spark.sql.extensions" -> "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions",
       s"spark.sql.catalog.$sparkCatalog" -> "org.apache.iceberg.spark.SparkCatalog",
-      s"spark.sql.catalog.$sparkCatalog.catalog-impl" -> "org.apache.iceberg.gcp.biglake.BigLakeCatalog",
-      s"spark.sql.catalog.$sparkCatalog.gcp_project" -> config.project,
-      s"spark.sql.catalog.$sparkCatalog.gcp_location" -> config.region,
-      s"spark.sql.catalog.$sparkCatalog.blms_catalog" -> config.catalog,
+      s"spark.sql.catalog.$sparkCatalog.type" -> "hadoop",
       s"spark.sql.catalog.$sparkCatalog.warehouse" -> config.location.toString
     )
-
-  override def extraTableProperties: Map[String, String] =
-    Map(
-      "bq_table" -> s"${config.bqDataset}.${config.table}",
-      "bq_connection" -> s"projects/${config.project}/locations/${config.region}/connections/${config.connection}"
-    )
-
-  override def requiresCreateNamespace: Boolean = true
 }

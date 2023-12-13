@@ -14,20 +14,20 @@ import io.circe.config.syntax._
 object TestConfig {
 
   /** Provides an app Config using defaults provided by our standard reference.conf */
-  def defaults: AnyConfig =
+  def defaults(overrides: String = fallbacks): AnyConfig =
     ConfigFactory
-      .load(fallbacks)
+      .load(ConfigFactory.parseString(overrides))
       .as[Config[Option[Unit], Option[Unit]]] match {
       case Right(ok) => ok
       case Left(e)   => throw new RuntimeException("Could not load default config for testing", e)
     }
 
-  private def fallbacks = ConfigFactory.parseString("""
+  private def fallbacks = """
     output: {
       good: {
         type: Delta
         location: "file:///tmp/lake-loader-test/events"
       }
     }
-  """)
+  """
 }
