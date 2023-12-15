@@ -70,7 +70,6 @@ object Dependencies {
   val hadoopAws    = "org.apache.hadoop"           % "hadoop-aws"                % V.hadoop
   val gcsConnector = "com.google.cloud.bigdataoss" % "gcs-connector"             % V.gcsConnector
   val hiveCommon   = "org.apache.hive"             % "hive-common"               % V.hive
-  val hiveExec     = "org.apache.hive"             % "hive-exec"                 % V.hive classifier "core"
 
   // java
   val slf4j         = "org.slf4j" % "slf4j-simple"   % V.slf4j
@@ -99,13 +98,10 @@ object Dependencies {
 
   val commonRuntimeDependencies = Seq(
     delta        % Runtime,
-    hudi         % Runtime,
     iceberg      % Runtime,
     hadoopClient % Runtime,
     slf4j        % Runtime,
-    protobuf     % Runtime,
-    sparkHive    % Runtime,
-    hiveExec     % Runtime // Needed for hudi
+    protobuf     % Runtime
   )
 
   val coreDependencies = Seq(
@@ -149,18 +145,24 @@ object Dependencies {
     thrift     % Runtime
   )
 
+  val hudiDependencies = Seq(
+    hudi      % Runtime,
+    sparkHive % Runtime
+  )
+
   val commonExclusions = Seq(
-    ExclusionRule(organization = "org.apache.zookeeper", name = "zookeeper"),
-    ExclusionRule(organization = "org.eclipse.jetty", name    = "jetty-client"),
-    ExclusionRule(organization = "org.eclipse.jetty", name    = "jetty-server"),
-    ExclusionRule(organization = "org.eclipse.jetty", name    = "jetty-http"),
-    ExclusionRule(organization = "org.eclipse.jetty", name    = "jetty-webapp"),
-    ExclusionRule(organization = "org.eclipse.jetty", name    = "jetty-webapp"),
+    ExclusionRule(organization = "org.apache.zookeeper", name     = "zookeeper"),
+    ExclusionRule(organization = "org.eclipse.jetty", name        = "jetty-client"),
+    ExclusionRule(organization = "org.eclipse.jetty", name        = "jetty-server"),
+    ExclusionRule(organization = "org.eclipse.jetty", name        = "jetty-http"),
+    ExclusionRule(organization = "org.eclipse.jetty", name        = "jetty-webapp"),
+    ExclusionRule(organization = "org.eclipse.jetty", name        = "jetty-webapp"),
     ExclusionRule(organization = "org.apache.kerby"),
-    ExclusionRule(organization = "org.apache.hadoop", name    = "hadoop-yarn-server-applicationhistoryservice"),
-    ExclusionRule(organization = "org.apache.hadoop", name    = "hadoop-yarn-server-common"),
-    ExclusionRule(organization = "org.apache.ivy", name       = "ivy"),
-    ExclusionRule(organization = "com.github.joshelser", name = "dropwizard-metrics-hadoop-metrics2-reporter")
+    ExclusionRule(organization = "org.apache.hadoop", name        = "hadoop-yarn-server-applicationhistoryservice"),
+    ExclusionRule(organization = "org.apache.hadoop", name        = "hadoop-yarn-server-common"),
+    ExclusionRule(organization = "org.apache.ivy", name           = "ivy"),
+    ExclusionRule(organization = "com.github.joshelser", name     = "dropwizard-metrics-hadoop-metrics2-reporter"),
+    ExclusionRule(organization = "org.apache.logging.log4j", name = "log4j-slf4j2-impl")
   )
 
 }
