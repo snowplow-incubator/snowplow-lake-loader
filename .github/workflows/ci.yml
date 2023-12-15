@@ -27,10 +27,50 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        app:
+        sbtProject:
           - azure
           - gcp
           - aws
+          - awsHudi
+          - gcpHudi
+          - azureHudi
+          - gcpBiglake
+        include:
+          - sbtProject: azure
+            runSnyk: true
+            targetDir: "modules/azure/target"
+            dockerSuffix: azure
+            dockerTagSuffix: ""
+          - sbtProject: gcp
+            runSnyk: true
+            targetDir: "modules/gcp/target"
+            dockerSuffix: gcp
+            dockerTagSuffix: ""
+          - sbtProject: aws
+            runSnyk: true
+            targetDir: "modules/aws/target"
+            dockerSuffix: aws
+            dockerTagSuffix: ""
+          - sbtProject: azureHudi
+            runSnyk: false
+            targetDir: "packaging/hudi/target/azure"
+            dockerSuffix: azure
+            dockerTagSuffix: "-hudi"
+          - sbtProject: gcpHudi
+            runSnyk: false
+            targetDir: "packaging/hudi/target/gcp"
+            dockerSuffix: gcp
+            dockerTagSuffix: "-hudi"
+          - sbtProject: awsHudi
+            runSnyk: false
+            targetDir: "packaging/hudi/target/aws"
+            dockerSuffix: aws
+            dockerTagSuffix: "-hudi"
+          - sbtProject: gcpBiglake
+            runSnyk: false
+            targetDir: "packaging/biglake/target/gcp"
+            dockerSuffix: gcp
+            dockerTagSuffix: "-biglake"
     steps:
       - name: Checkout Github
         uses: actions/checkout@v2
@@ -45,17 +85,15 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
       - name: Stage the Docker build
-        run: sbt "project ${{ matrix.app}}" docker:stage
+        run: sbt "project ${{ matrix.sbtProject}}" docker:stage
       - name: Docker metadata
         id: meta
         uses: docker/metadata-action@v3
         with:
-          images: "snowplow/lake-loader-${{ matrix.app }}"
+          images: "snowplow/lake-loader-${{ matrix.dockerSuffix }}"
           tags: |
-            type=raw,value=latest,enable=${{ !contains(github.ref_name, 'rc') }}
-            type=raw,value=latest-focal,enable=${{ !contains(github.ref_name, 'rc') }}
-            type=raw,value=${{ github.ref_name }}
-            type=raw,value=${{ github.ref_name }}-focal
+            type=raw,value=latest${{ matrix.dockerTagSuffix }},enable=${{ !contains(github.ref_name, 'rc') }}
+            type=raw,value=${{ github.ref_name }}${{ matrix.dockerTagSuffix }}
           flavor: |
             latest=false
       - name: Set up QEMU
@@ -65,19 +103,19 @@ jobs:
       - name: Push image
         uses: docker/build-push-action@v2
         with:
-          context: modules/${{ matrix.app }}/target/docker/stage
-          file: modules/${{ matrix.app }}/target/docker/stage/Dockerfile
+          context: ${{ matrix.targetDir }}/docker/stage
+          file: ${{ matrix.targetDir }}/docker/stage/Dockerfile
           platforms: linux/amd64,linux/arm64/v8
           tags: ${{ steps.meta.outputs.tags }}
           push: true
       - name: Build local image, which is needed to run Snyk
-        if: ${{ !contains(github.ref_name, 'rc') }}
-        run: sbt "project ${{ matrix.app }}" docker:publishLocal
+        if: ${{ !contains(github.ref_name, 'rc') }} && matrix.runSnyk
+        run: sbt "project ${{ matrix.sbtProject }}" docker:publishLocal
       - name: Run Snyk to check for vulnerabilities
         uses: snyk/actions/docker@master
-        if: ${{ !contains(github.ref_name, 'rc') }}
+        if: ${{ !contains(github.ref_name, 'rc') }} && matrix.runSnyk
         with:
-          image: "snowplow/lake-loader-${{ matrix.app }}:${{ github.ref_name }}"
+          image: "snowplow/lake-loader-${{ matrix.dockerSuffix }}:${{ github.ref_name }}${{ matrix.dockerTagSuffix }}"
           args: "--app-vulns --org=99605b41-ca0f-42c9-a9ff-45c201a10a26"
           command: monitor
         env:
