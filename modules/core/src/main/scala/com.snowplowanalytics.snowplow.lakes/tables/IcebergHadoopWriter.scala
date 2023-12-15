@@ -12,19 +12,12 @@ package com.snowplowanalytics.snowplow.lakes.tables
 
 import com.snowplowanalytics.snowplow.lakes.Config
 
-class IcebergSnowflakeWriter(config: Config.IcebergSnowflake) extends IcebergWriter.WithDefaults(config) {
-
+class IcebergHadoopWriter(config: Config.IcebergHadoop) extends IcebergWriter.WithDefaults(config) {
   override def sparkConfig: Map[String, String] =
     Map(
       "spark.sql.extensions" -> "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions",
       s"spark.sql.catalog.$sparkCatalog" -> "org.apache.iceberg.spark.SparkCatalog",
-      s"spark.sql.catalog.$sparkCatalog.catalog-impl" -> "org.apache.iceberg.snowflake.SnowflakeCatalog",
-      s"spark.sql.catalog.$sparkCatalog.uri" -> s"jdbc:snowflake://${config.host}",
-      s"spark.sql.catalog.$sparkCatalog.jdbc.user" -> config.user,
-      s"spark.sql.catalog.$sparkCatalog.jdbc.password" -> config.password,
-      s"spark.sql.catalog.$sparkCatalog.jdbc.role" -> config.role.orNull
-
-      // The "application" property is sadly not configurable because SnowflakeCatalog overrides it :(
-      // s"spark.sql.catalog.$sparkCatalog.jdbc.application" -> "snowplow"
+      s"spark.sql.catalog.$sparkCatalog.type" -> "hadoop",
+      s"spark.sql.catalog.$sparkCatalog.warehouse" -> config.location.toString
     )
 }

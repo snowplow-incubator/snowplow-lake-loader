@@ -19,7 +19,19 @@ import org.apache.spark.sql.{DataFrame, SparkSession}
 import com.snowplowanalytics.snowplow.lakes.Config
 import com.snowplowanalytics.snowplow.lakes.processing.SparkSchema
 
+/**
+ * A base [[Writer]] for all flavours of Iceberg. Different concrete classes support different types
+ * of catalog
+ */
 abstract class IcebergWriter(config: Config.Iceberg) extends Writer {
+
+  /** Abstract methods */
+
+  def extraTableProperties: Map[String, String]
+
+  def requiresCreateNamespace: Boolean
+
+  /* End of abstract methods */
 
   private implicit def logger[F[_]: Sync] = Slf4jLogger.getLogger[F]
 
@@ -31,8 +43,6 @@ abstract class IcebergWriter(config: Config.Iceberg) extends Writer {
       "write.spark.accept-any-schema" -> "true"
     )
 
-  def extraTableProperties: Map[String, String] = Map.empty
-
   override def prepareTable[F[_]: Sync](spark: SparkSession): F[Unit] = {
     val tableProps = (defaultTableProperties ++ extraTableProperties)
       .map { case (k, v) =>
@@ -42,7 +52,9 @@ abstract class IcebergWriter(config: Config.Iceberg) extends Writer {
 
     Logger[F].info(s"Creating Iceberg table $fqTable if it does not already exist...") >>
       Sync[F].blocking {
-        spark.sql(s"CREATE NAMESPACE IF NOT EXISTS $sparkCatalog")
+        if (requiresCreateNamespace) {
+          spark.sql(s"CREATE NAMESPACE IF NOT EXISTS $sparkCatalog")
+        }
         spark.sql(s"CREATE DATABASE IF NOT EXISTS $fqDatabase")
         spark.sql(s"""
           CREATE TABLE IF NOT EXISTS $fqTable
@@ -72,4 +84,14 @@ abstract class IcebergWriter(config: Config.Iceberg) extends Writer {
   private def fqDatabase: String =
     s"$sparkCatalog.${config.sparkDatabase}"
 
+}
+
+object IcebergWriter {
+
+  abstract class WithDefaults(config: Config.Iceberg) extends IcebergWriter(config: Config.Iceberg) {
+
+    override def requiresCreateNamespace: Boolean = false
+
+    override def extraTableProperties: Map[String, String] = Map.empty
+  }
 }

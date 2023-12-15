@@ -30,4 +30,6 @@ class IcebergBigLakeWriter(config: Config.IcebergBigLake) extends IcebergWriter(
       "bq_table" -> s"${config.bqDataset}.${config.table}",
       "bq_connection" -> s"projects/${config.project}/locations/${config.region}/connections/${config.connection}"
     )
+
+  override def requiresCreateNamespace: Boolean = true
 }
