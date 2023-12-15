@@ -37,7 +37,7 @@
     "good": {
       # -- URI of the bucket where the data lake will be written (required)
       # -- For a GCS bucket, the uri should start with `gs://`
-      "location": "gs://my-bucket/events
+      "location": "s3a://my-bucket/events
 
       # -- Atomic columns which should be brought to the "left-hand-side" of the events table, to
       # -- enable Delta's Data Skipping feature.
@@ -92,6 +92,9 @@
     "conf": {
       # -- E.g. to enable the spark ui for debugging:
       "spark.ui.enabled": true
+
+      # -- E.g. to change credentials provider
+      "fs.s3a.aws.credentials.provider": "com.amazonaws.auth.InstanceProfileCredentialsProvider"
     }
   }
 

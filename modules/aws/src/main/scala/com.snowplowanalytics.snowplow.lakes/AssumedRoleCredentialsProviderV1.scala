@@ -24,14 +24,20 @@ class AssumedRoleCredentialsProviderV1(delegate: AssumedRoleCredentialsProvider)
   def this(fsUri: URI, conf: Configuration) =
     this(new AssumedRoleCredentialsProvider(fsUri, conf))
 
-  override def getCredentials(): AWSCredentials = {
-    val v2 = delegate.resolveCredentials().asInstanceOf[AwsSessionCredentialsV2]
-    new AWSSessionCredentials {
-      def getSessionToken()   = v2.sessionToken()
-      def getAWSAccessKeyId() = v2.accessKeyId()
-      def getAWSSecretKey()   = v2.secretAccessKey()
+  override def getCredentials(): AWSCredentials =
+    delegate.resolveCredentials() match {
+      case v2: AwsSessionCredentialsV2 =>
+        new AWSSessionCredentials {
+          def getAWSAccessKeyId() = v2.accessKeyId()
+          def getAWSSecretKey()   = v2.secretAccessKey()
+          def getSessionToken()   = v2.sessionToken()
+        }
+      case v2 =>
+        new AWSCredentials {
+          def getAWSAccessKeyId() = v2.accessKeyId()
+          def getAWSSecretKey()   = v2.secretAccessKey()
+        }
     }
-  }
 
   override def refresh(): Unit = ()
 
