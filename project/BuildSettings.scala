@@ -72,7 +72,7 @@ object BuildSettings {
 
   lazy val biglakeSettings = Seq(
     downloadUnmanagedJars := {
-      val libDir = baseDirectory.value / "lib"
+      val libDir = unmanagedBase.value
       IO.createDirectory(libDir)
       val file = libDir / "biglake-catalog-iceberg1.2.0-0.1.0-with-dependencies.jar"
       if (!file.exists) {
