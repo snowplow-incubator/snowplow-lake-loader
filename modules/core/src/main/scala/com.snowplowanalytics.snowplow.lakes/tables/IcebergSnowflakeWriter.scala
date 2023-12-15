@@ -9,7 +9,7 @@ package com.snowplowanalytics.snowplow.lakes.tables
 
 import com.snowplowanalytics.snowplow.lakes.Config
 
-class IcebergSnowflakeWriter(config: Config.IcebergSnowflake) extends IcebergWriter(config) {
+class IcebergSnowflakeWriter(config: Config.IcebergSnowflake) extends IcebergWriter.WithDefaults(config) {
 
   override def sparkConfig: Map[String, String] =
     Map(

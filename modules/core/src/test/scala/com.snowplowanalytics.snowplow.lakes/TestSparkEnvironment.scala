@@ -11,8 +11,8 @@ import cats.effect.IO
 import cats.effect.kernel.Resource
 import org.http4s.client.Client
 import fs2.Stream
+import fs2.io.file.Path
 
-import java.nio.file.{Files, Path}
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
 import com.snowplowanalytics.iglu.client.Resolver
@@ -21,32 +21,27 @@ import com.snowplowanalytics.snowplow.sinks.Sink
 import com.snowplowanalytics.snowplow.lakes.processing.LakeWriter
 import com.snowplowanalytics.snowplow.runtime.AppInfo
 
-case class TestSparkEnvironment(
-  environment: Environment[IO],
-  tmpDir: Path
-)
-
 object TestSparkEnvironment {
 
-  def build(windows: List[List[TokenedEvents]]): Resource[IO, TestSparkEnvironment] = for {
-    tmpDir <- Resource.eval(IO.blocking(Files.createTempDirectory("lake-loader")))
-    (lakeWriter, _) <- LakeWriter.build[IO](TestConfig.defaults.spark, targetConfig(tmpDir))
-  } yield {
-    val env = Environment(
-      appInfo         = appInfo,
-      source          = testSourceAndAck(windows),
-      badSink         = Sink[IO](_ => IO.unit),
-      resolver        = Resolver[IO](Nil, None),
-      httpClient      = testHttpClient,
-      lakeWriter      = lakeWriter,
-      metrics         = testMetrics,
-      inMemBatchBytes = 1000000L,
-      cpuParallelism  = 1,
-      windowing       = EventProcessingConfig.TimedWindows(1.minute, 1.0)
-    )
-
-    TestSparkEnvironment(env, tmpDir)
-  }
+  def build(
+    target: TestConfig.Target,
+    tmpDir: Path,
+    windows: List[List[TokenedEvents]]
+  ): Resource[IO, Environment[IO]] = for {
+    testConfig <- Resource.pure(TestConfig.defaults(target, tmpDir))
+    (lakeWriter, _) <- LakeWriter.build[IO](testConfig.spark, testConfig.output.good)
+  } yield Environment(
+    appInfo         = appInfo,
+    source          = testSourceAndAck(windows),
+    badSink         = Sink[IO](_ => IO.unit),
+    resolver        = Resolver[IO](Nil, None),
+    httpClient      = testHttpClient,
+    lakeWriter      = lakeWriter,
+    metrics         = testMetrics,
+    inMemBatchBytes = 1000000L,
+    cpuParallelism  = 1,
+    windowing       = EventProcessingConfig.TimedWindows(1.minute, 1.0)
+  )
 
   private def testSourceAndAck(windows: List[List[TokenedEvents]]): SourceAndAck[IO] =
     new SourceAndAck[IO] {
@@ -65,8 +60,6 @@ object TestSparkEnvironment {
   private def testHttpClient: Client[IO] = Client[IO] { _ =>
     Resource.raiseError[IO, Nothing, Throwable](new RuntimeException("http failure"))
   }
-
-  private def targetConfig(tmp: Path) = Config.Delta(tmp.resolve("events").toUri, List("load_tstamp", "collector_tstamp"))
 
   val appInfo = new AppInfo {
     def name        = "lake-loader-test"

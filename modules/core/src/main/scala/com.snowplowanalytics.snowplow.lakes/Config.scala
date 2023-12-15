@@ -56,6 +56,15 @@ object Config {
     def table: String
   }
 
+  case class IcebergHadoop(
+    database: String,
+    table: String,
+    location: URI
+  ) extends Iceberg {
+
+    override def sparkDatabase: String = database
+  }
+
   case class IcebergSnowflake(
     host: String,
     user: String,

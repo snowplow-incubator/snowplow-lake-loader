@@ -59,6 +59,7 @@ object Dependencies {
   // spark and hadoop
   val sparkCore    = "org.apache.spark"           %% "spark-core"                % V.spark
   val sparkSql     = "org.apache.spark"           %% "spark-sql"                 % V.spark
+  val sparkHive    = "org.apache.spark"           %% "spark-hive"                % V.spark
   val delta        = "io.delta"                   %% "delta-core"                % V.delta
   val hudi         = "org.apache.hudi"            %% "hudi-spark3.4-bundle"      % V.hudi
   val iceberg      = "org.apache.iceberg"         %% "iceberg-spark-runtime-3.4" % V.iceberg
@@ -94,6 +95,17 @@ object Dependencies {
   val catsEffectTestkit = "org.typelevel" %% "cats-effect-testkit"        % V.catsEffect       % Test
   val catsEffectSpecs2  = "org.typelevel" %% "cats-effect-testing-specs2" % V.catsEffectSpecs2 % Test
 
+  val commonRuntimeDependencies = Seq(
+    delta        % Runtime,
+    hudi         % Runtime,
+    iceberg      % Runtime,
+    hadoopClient % Runtime,
+    slf4j        % Runtime,
+    protobuf     % Runtime,
+    sparkHive    % Runtime,
+    hiveExec     % Runtime // Needed for hudi
+  )
+
   val coreDependencies = Seq(
     streamsCore,
     loaders,
@@ -111,17 +123,7 @@ object Dependencies {
     catsEffectSpecs2,
     catsEffectTestkit,
     slf4j % Test
-  )
-
-  val commonRuntimeDependencies = Seq(
-    delta        % Runtime,
-    hudi         % Runtime,
-    iceberg      % Runtime,
-    hadoopClient % Runtime,
-    slf4j        % Runtime,
-    protobuf     % Runtime,
-    hiveExec     % Runtime // Needed for hudi
-  )
+  ) ++ commonRuntimeDependencies
 
   val awsDependencies = Seq(
     kinesis,
