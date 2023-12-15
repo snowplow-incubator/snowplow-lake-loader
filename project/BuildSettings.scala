@@ -53,20 +53,14 @@ object BuildSettings {
       )
     ),
     headerMappings := headerMappings.value + (HeaderFileType.conf -> HeaderCommentStyle.hashLineComment),
-
-  )
-
-  lazy val logSettings = Seq(
-    excludeDependencies ++= Seq(
-      ExclusionRule("org.apache.logging.log4j", "log4j-slf4j2-impl")
-    )
+    excludeDependencies ++= Dependencies.commonExclusions
   )
 
   lazy val appSettings = Seq(
     buildInfoKeys := Seq[BuildInfoKey](dockerAlias, name, version),
     buildInfoPackage := "com.snowplowanalytics.snowplow.lakes",
     buildInfoOptions += BuildInfoOption.Traits("com.snowplowanalytics.snowplow.runtime.AppInfo")
-  ) ++ commonSettings ++ logSettings
+  ) ++ commonSettings
 
   lazy val awsSettings = appSettings ++ Seq(
     name := "lake-loader-aws",
@@ -85,6 +79,14 @@ object BuildSettings {
     buildInfoKeys += BuildInfoKey("cloud" -> "GCP")
   )
 
+  lazy val hudiAppSettings = Seq(
+    dockerAlias := dockerAlias.value.copy(tag = dockerAlias.value.tag.map(t => s"$t-hudi"))
+  )
+
+  lazy val biglakeAppSettings = Seq(
+    dockerAlias := dockerAlias.value.copy(tag = dockerAlias.value.tag.map(t => s"$t-biglake"))
+  )
+
   lazy val biglakeSettings = Seq(
     downloadUnmanagedJars := {
       val libDir = baseDirectory.value / "lib"
@@ -96,8 +98,7 @@ object BuildSettings {
         ) #> file !
       }
     },
-    Compile / compile := ((Compile / compile) dependsOn downloadUnmanagedJars).value,
-    dockerAlias := dockerAlias.value.copy(tag = dockerAlias.value.tag.map(t => s"$t-biglake"))
+    Compile / compile := ((Compile / compile) dependsOn downloadUnmanagedJars).value
   )
 
 }

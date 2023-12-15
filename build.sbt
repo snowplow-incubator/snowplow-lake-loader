@@ -14,20 +14,24 @@ lazy val root = project
     core,
     azure,
     gcp,
-    aws
+    aws,
+    hudi,
+    biglake,
+    awsHudi,
+    gcpHudi,
+    azureHudi,
+    gcpBiglake
   )
 
 lazy val core: Project = project
   .in(file("modules/core"))
-  .settings(BuildSettings.commonSettings ++ BuildSettings.logSettings)
+  .settings(BuildSettings.commonSettings)
   .settings(libraryDependencies ++= Dependencies.coreDependencies)
-  .settings(excludeDependencies ++= Dependencies.commonExclusions)
 
 lazy val azure: Project = project
   .in(file("modules/azure"))
   .settings(BuildSettings.azureSettings)
   .settings(libraryDependencies ++= Dependencies.azureDependencies)
-  .settings(excludeDependencies ++= Dependencies.commonExclusions)
   .dependsOn(core)
   .enablePlugins(BuildInfoPlugin, JavaAppPackaging, SnowplowDockerPlugin)
 
@@ -35,7 +39,6 @@ lazy val gcp: Project = project
   .in(file("modules/gcp"))
   .settings(BuildSettings.gcpSettings)
   .settings(libraryDependencies ++= Dependencies.gcpDependencies)
-  .settings(excludeDependencies ++= Dependencies.commonExclusions)
   .dependsOn(core)
   .enablePlugins(BuildInfoPlugin, JavaAppPackaging, SnowplowDockerPlugin)
 
@@ -43,21 +46,51 @@ lazy val aws: Project = project
   .in(file("modules/aws"))
   .settings(BuildSettings.awsSettings)
   .settings(libraryDependencies ++= Dependencies.awsDependencies)
-  .settings(excludeDependencies ++= Dependencies.commonExclusions)
   .dependsOn(core)
   .enablePlugins(BuildInfoPlugin, JavaAppPackaging, SnowplowDockerPlugin)
 
-// Temporarily, separate out biglake support into its own project.
-// Because the biglake shaded jar adds CVEs which are difficult to remove from the build.
-lazy val gcpWithBiglake: Project = project
-  .in(file("modules/gcpWithBiglake"))
-  .settings(BuildSettings.gcpSettings)
-  .settings(BuildSettings.biglakeSettings)
-  .settings(sourceDirectory := (gcp / sourceDirectory).value)
-  .settings(libraryDependencies ++= Dependencies.gcpDependencies)
+/** Packaging: Extra runtime dependencies for alternative assets * */
+
+lazy val hudi: Project = project
+  .in(file("packaging/hudi"))
+  .settings(BuildSettings.commonSettings)
+  .settings(libraryDependencies ++= Dependencies.hudiDependencies)
+  .dependsOn(core % "test->test")
+
+lazy val biglake: Project = project
+  .in(file("packaging/biglake"))
+  .settings(BuildSettings.commonSettings ++ BuildSettings.biglakeSettings)
   .settings(libraryDependencies ++= Dependencies.biglakeDependencies)
-  .settings(excludeDependencies ++= Dependencies.commonExclusions)
-  .dependsOn(core)
-  .enablePlugins(BuildInfoPlugin, JavaAppPackaging, SnowplowDockerPlugin)
+
+/**
+ * Packaging: Alternative assets
+ *
+ * These exist because there are some depenencies we don't want to put in the regular assets. Helps
+ * with CVE management.
+ */
+
+lazy val awsHudi: Project = aws
+  .withId("awsHudi")
+  .settings(target := (hudi / target).value / "aws")
+  .settings(BuildSettings.hudiAppSettings)
+  .dependsOn(hudi % "runtime->runtime")
+
+lazy val gcpHudi: Project = gcp
+  .withId("gcpHudi")
+  .settings(target := (hudi / target).value / "gcp")
+  .settings(BuildSettings.hudiAppSettings)
+  .dependsOn(hudi % "runtime->runtime")
+
+lazy val azureHudi: Project = azure
+  .withId("azureHudi")
+  .settings(target := (hudi / target).value / "azure")
+  .settings(BuildSettings.hudiAppSettings)
+  .dependsOn(hudi % "runtime->runtime")
+
+lazy val gcpBiglake: Project = gcp
+  .withId("gcpBiglake")
+  .settings(target := (biglake / target).value / "gcp")
+  .settings(BuildSettings.biglakeAppSettings)
+  .dependsOn(hudi % "runtime->runtime")
 
 ThisBuild / fork := true
