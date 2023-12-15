@@ -9,13 +9,13 @@ package com.snowplowanalytics.snowplow.lakes.processing
 
 import org.apache.spark.sql.{DataFrame, SparkSession}
 
-import com.snowplowanalytics.snowplow.lakes.TestSparkEnvironment
+import com.snowplowanalytics.snowplow.lakes.TestConfig
 
-import java.nio.file.Path
+import fs2.io.file.Path
 
 class IcebergSpec extends AbstractSparkSpec {
 
-  override def target: TestSparkEnvironment.Target = TestSparkEnvironment.Iceberg
+  override def target: TestConfig.Target = TestConfig.Iceberg
 
   /** Reads the table back into memory, so we can make assertions on the app's output */
   override def readTable(spark: SparkSession, tmpDir: Path): DataFrame =

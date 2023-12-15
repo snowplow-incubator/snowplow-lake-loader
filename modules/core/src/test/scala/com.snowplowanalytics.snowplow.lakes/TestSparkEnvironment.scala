@@ -11,8 +11,8 @@ import cats.effect.IO
 import cats.effect.kernel.Resource
 import org.http4s.client.Client
 import fs2.Stream
+import fs2.io.file.Path
 
-import java.nio.file.{Files, Path}
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
 import com.snowplowanalytics.iglu.client.Resolver
@@ -21,38 +21,27 @@ import com.snowplowanalytics.snowplow.sinks.Sink
 import com.snowplowanalytics.snowplow.lakes.processing.LakeWriter
 import com.snowplowanalytics.snowplow.runtime.AppInfo
 
-case class TestSparkEnvironment(
-  environment: Environment[IO],
-  tmpDir: Path
-)
-
 object TestSparkEnvironment {
 
-  sealed trait Target
-  case object Delta extends Target
-  case object Hudi extends Target
-  case object Iceberg extends Target
-
-  def build(target: Target, windows: List[List[TokenedEvents]]): Resource[IO, TestSparkEnvironment] = for {
-    tmpDir <- Resource.eval(IO.blocking(Files.createTempDirectory("lake-loader")))
-    testConfig = TestConfig.defaults(configOverrides(target, tmpDir))
+  def build(
+    target: TestConfig.Target,
+    tmpDir: Path,
+    windows: List[List[TokenedEvents]]
+  ): Resource[IO, Environment[IO]] = for {
+    testConfig <- Resource.pure(TestConfig.defaults(target, tmpDir))
     (lakeWriter, _) <- LakeWriter.build[IO](testConfig.spark, testConfig.output.good)
-  } yield {
-    val env = Environment(
-      appInfo         = appInfo,
-      source          = testSourceAndAck(windows),
-      badSink         = Sink[IO](_ => IO.unit),
-      resolver        = Resolver[IO](Nil, None),
-      httpClient      = testHttpClient,
-      lakeWriter      = lakeWriter,
-      metrics         = testMetrics,
-      inMemBatchBytes = 1000000L,
-      cpuParallelism  = 1,
-      windowing       = EventProcessingConfig.TimedWindows(1.minute, 1.0)
-    )
-
-    TestSparkEnvironment(env, tmpDir)
-  }
+  } yield Environment(
+    appInfo         = appInfo,
+    source          = testSourceAndAck(windows),
+    badSink         = Sink[IO](_ => IO.unit),
+    resolver        = Resolver[IO](Nil, None),
+    httpClient      = testHttpClient,
+    lakeWriter      = lakeWriter,
+    metrics         = testMetrics,
+    inMemBatchBytes = 1000000L,
+    cpuParallelism  = 1,
+    windowing       = EventProcessingConfig.TimedWindows(1.minute, 1.0)
+  )
 
   private def testSourceAndAck(windows: List[List[TokenedEvents]]): SourceAndAck[IO] =
     new SourceAndAck[IO] {
@@ -70,35 +59,6 @@ object TestSparkEnvironment {
 
   private def testHttpClient: Client[IO] = Client[IO] { _ =>
     Resource.raiseError[IO, Nothing, Throwable](new RuntimeException("http failure"))
-  }
-
-  private def configOverrides(target: Target, tmp: Path): String = {
-    val location = tmp.resolve("events").toUri
-    target match {
-      case Delta =>
-        s"""
-        output.good: {
-          type: "Delta"
-          location: "$location"
-        }
-        """
-      case Hudi =>
-        s"""
-        output.good: {
-          type: "Hudi"
-          location: "$location"
-        }
-        """
-      case Iceberg =>
-        s"""
-        output.good: {
-          type: "IcebergHadoop"
-          database: "test"
-          table: "events"
-          location: "${tmp.toUri}"
-        }
-        """
-    }
   }
 
   val appInfo = new AppInfo {

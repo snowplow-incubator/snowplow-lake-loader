@@ -11,23 +11,51 @@ import com.typesafe.config.ConfigFactory
 import cats.implicits._
 import io.circe.config.syntax._
 
+import fs2.io.file.Path
+
 object TestConfig {
 
+  sealed trait Target
+  case object Delta extends Target
+  case object Hudi extends Target
+  case object Iceberg extends Target
+
   /** Provides an app Config using defaults provided by our standard reference.conf */
-  def defaults(overrides: String = fallbacks): AnyConfig =
+  def defaults(target: Target, tmpDir: Path): AnyConfig =
     ConfigFactory
-      .load(ConfigFactory.parseString(overrides))
+      .load(ConfigFactory.parseString(configOverrides(target, tmpDir)))
       .as[Config[Option[Unit], Option[Unit]]] match {
       case Right(ok) => ok
       case Left(e)   => throw new RuntimeException("Could not load default config for testing", e)
     }
 
-  private def fallbacks = """
-    output: {
-      good: {
-        type: Delta
-        location: "file:///tmp/lake-loader-test/events"
-      }
+  private def configOverrides(target: TestConfig.Target, tmpDir: Path): String = {
+    val location = (tmpDir / "events").toNioPath.toUri
+    target match {
+      case Delta =>
+        s"""
+        output.good: {
+          type: "Delta"
+          location: "$location"
+        }
+        """
+      case Hudi =>
+        s"""
+        output.good: {
+          type: "Hudi"
+          location: "$location"
+        }
+        """
+      case Iceberg =>
+        s"""
+        output.good: {
+          type: "IcebergHadoop"
+          database: "test"
+          table: "events"
+          location: "${tmpDir.toNioPath.toUri}"
+        }
+        """
     }
-  """
+  }
+
 }

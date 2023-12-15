@@ -19,11 +19,11 @@ import org.apache.spark.sql.{DataFrame, SparkSession}
 
 import scala.concurrent.duration.DurationInt
 import java.nio.charset.StandardCharsets
-import java.nio.file.Path
+import fs2.io.file.{Files, Path}
 
 import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer, SelfDescribingData}
 import com.snowplowanalytics.snowplow.analytics.scalasdk.{Event, SnowplowEvent}
-import com.snowplowanalytics.snowplow.lakes.TestSparkEnvironment
+import com.snowplowanalytics.snowplow.lakes.{TestConfig, TestSparkEnvironment}
 import com.snowplowanalytics.snowplow.sources.TokenedEvents
 
 /** Base Spec for testing different output formats of this loader */
@@ -46,26 +46,25 @@ abstract class AbstractSparkSpec extends Specification with CatsEffect {
   /** Spark config used only while reading table back into memory for assertions */
   def sparkConfig(tmpDir: Path): Map[String, String]
 
-  def target: TestSparkEnvironment.Target
+  def target: TestConfig.Target
 
   /* The specs */
 
-  def e1 = {
-
+  def e1 = Files[IO].tempDirectory.use { tmpDir =>
     val resources = for {
       inputs <- Resource.eval(generateEvents.take(2).compile.toList)
-      env <- TestSparkEnvironment.build(target, List(inputs.map(_._1)))
+      env <- TestSparkEnvironment.build(target, tmpDir, List(inputs.map(_._1)))
     } yield (inputs.map(_._2), env)
 
     val result = resources.use { case (inputEvents, env) =>
       Processing
-        .stream(env.environment)
+        .stream(env)
         .compile
         .drain
-        .as((inputEvents, env.tmpDir))
+        .as(inputEvents)
     }
 
-    result.flatMap { case (inputEvents, tmpDir) =>
+    result.flatMap { inputEvents =>
       sparkForAssertions(sparkConfig(tmpDir)).use { spark =>
         IO.blocking(readTable(spark, tmpDir)).map { df =>
           import spark.implicits._
@@ -91,22 +90,21 @@ abstract class AbstractSparkSpec extends Specification with CatsEffect {
     }
   }
 
-  def e2 = {
-
+  def e2 = Files[IO].tempDirectory.use { tmpDir =>
     val resources = for {
       inputs <- Resource.eval(generateEventsBadEvolution.take(2).compile.toList)
-      env <- TestSparkEnvironment.build(target, List(inputs.map(_._1)))
+      env <- TestSparkEnvironment.build(target, tmpDir, List(inputs.map(_._1)))
     } yield (inputs.map(_._2), env)
 
     val result = resources.use { case (inputEvents, env) =>
       Processing
-        .stream(env.environment)
+        .stream(env)
         .compile
         .drain
-        .as((inputEvents, env.tmpDir))
+        .as(inputEvents)
     }
 
-    result.flatMap { case (inputEvents, tmpDir) =>
+    result.flatMap { inputEvents =>
       sparkForAssertions(sparkConfig(tmpDir)).use { spark =>
         IO.blocking(readTable(spark, tmpDir)).map { df =>
           import spark.implicits._
