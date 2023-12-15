@@ -32,7 +32,7 @@ object Dependencies {
 
     // java
     val slf4j    = "2.0.7"
-    val azureSdk = "1.9.1"
+    val azureSdk = "1.11.1"
     val sentry   = "6.25.2"
     val awsSdk1  = "1.12.646"
 
@@ -41,10 +41,10 @@ object Dependencies {
     val igluClient = "3.0.0"
 
     // Transitive overrides
-    val protobuf = "3.24.2"
-    val snappy   = "1.1.10.2"
+    val protobuf = "3.25.1"
+    val snappy   = "1.1.10.5"
     val thrift   = "0.18.1"
-    val jackson  = "2.14.2"
+    val netty    = "4.1.104.Final"
 
     // tests
     val specs2           = "4.20.0"
@@ -77,12 +77,12 @@ object Dependencies {
   val sentry        = "io.sentry" % "sentry"         % V.sentry
 
   // transitive overrides
-  val protobuf   = "com.google.protobuf"        % "protobuf-java"                      % V.protobuf
-  val snappy     = "org.xerial.snappy"          % "snappy-java"                        % V.snappy
-  val hadoopYarn = "org.apache.hadoop"          % "hadoop-yarn-server-resourcemanager" % V.hadoop
-  val thrift     = "org.apache.thrift"          % "libthrift"                          % V.thrift
-  val jackson    = "com.fasterxml.jackson.core" % "jackson-databind"                   % V.jackson
-  val awsBundle  = "com.amazonaws"              % "aws-java-sdk-bundle"                % V.awsSdk1
+  val protobuf   = "com.google.protobuf" % "protobuf-java"                      % V.protobuf
+  val snappy     = "org.xerial.snappy"   % "snappy-java"                        % V.snappy
+  val hadoopYarn = "org.apache.hadoop"   % "hadoop-yarn-server-resourcemanager" % V.hadoop
+  val thrift     = "org.apache.thrift"   % "libthrift"                          % V.thrift
+  val netty      = "io.netty"            % "netty-all"                          % V.netty
+  val awsBundle  = "com.amazonaws"       % "aws-java-sdk-bundle"                % V.awsSdk1
 
   val streamsCore      = "com.snowplowanalytics" %% "streams-core"             % V.streams
   val kinesis          = "com.snowplowanalytics" %% "kinesis"                  % V.streams
@@ -102,7 +102,9 @@ object Dependencies {
     iceberg      % Runtime,
     hadoopClient % Runtime,
     slf4j        % Runtime,
-    protobuf     % Runtime
+    protobuf     % Runtime,
+    netty        % Runtime,
+    snappy       % Runtime
   )
 
   val coreDependencies = Seq(
