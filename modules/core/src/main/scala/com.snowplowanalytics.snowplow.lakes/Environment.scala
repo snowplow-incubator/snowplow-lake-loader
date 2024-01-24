@@ -10,6 +10,7 @@ package com.snowplowanalytics.snowplow.lakes
 import cats.{Functor, Monad}
 import cats.implicits._
 import cats.effect.{Async, Resource, Sync}
+import cats.effect.std.Semaphore
 import cats.effect.unsafe.implicits.global
 import org.http4s.client.Client
 import org.http4s.blaze.client.BlazeClientBuilder
@@ -31,7 +32,8 @@ case class Environment[F[_]](
   metrics: Metrics[F],
   cpuParallelism: Int, // use the runtime api to pick something sensible
   inMemBatchBytes: Long,
-  windowing: EventProcessingConfig.TimedWindows
+  windowing: EventProcessingConfig.TimedWindows,
+  cpuPermit: Resource[F, Unit]
 )
 
 object Environment {
@@ -53,6 +55,8 @@ object Environment {
       metrics <- Resource.eval(Metrics.build(config.main.monitoring.metrics))
       isHealthy = combineIsHealthy(sourceIsHealthy(config.main.monitoring.healthProbe, sourceAndAck), lakeWriterHealth)
       _ <- HealthProbe.resource(config.main.monitoring.healthProbe.port, isHealthy)
+      cpuParallelism = chooseCpuParallelism(config.main)
+      cpuSemaphore <- Resource.eval(Semaphore[F](cpuParallelism.toLong))
     } yield Environment(
       appInfo         = appInfo,
       source          = sourceAndAck,
@@ -61,9 +65,10 @@ object Environment {
       httpClient      = httpClient,
       lakeWriter      = lakeWriter,
       metrics         = metrics,
-      cpuParallelism  = chooseCpuParallelism(config.main),
+      cpuParallelism  = cpuParallelism,
       inMemBatchBytes = config.main.inMemBatchBytes,
-      windowing       = windowing
+      windowing       = windowing,
+      cpuPermit       = cpuSemaphore.permit
     )
 
   private def enableSentry[F[_]: Sync](appInfo: AppInfo, config: Option[Config.Sentry]): Resource[F, Unit] =

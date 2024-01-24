@@ -10,7 +10,7 @@ package com.snowplowanalytics.snowplow.lakes.processing
 import cats.implicits._
 import cats.effect.implicits._
 import cats.data.NonEmptyList
-import cats.{Applicative, Foldable, Functor, Monad}
+import cats.{Applicative, Foldable, Functor}
 import cats.effect.{Async, Sync}
 import cats.effect.kernel.{Ref, Unique}
 import fs2.{Chunk, Pipe, Stream}
@@ -75,12 +75,12 @@ object Processing {
     }
   }
 
-  private def dropViews[F[_]: Monad](env: Environment[F], ref: Ref[F, WindowState]): F[Unit] =
+  private def dropViews[F[_]: Sync](env: Environment[F], ref: Ref[F, WindowState]): F[Unit] =
     ref.get.flatMap { state =>
       if (state.framesOnDisk.nonEmpty)
-        env.lakeWriter.removeDataFramesFromDisk(state.framesOnDisk)
+        env.cpuPermit.surround(env.lakeWriter.removeDataFramesFromDisk(state.framesOnDisk))
       else
-        Monad[F].unit
+        Sync[F].unit
     }
 
   private def processBatches[F[_]: Async: RegistryLookup](
@@ -108,29 +108,31 @@ object Processing {
     ref: Ref[F, WindowState]
   ): Pipe[F, Batched, Nothing] =
     _.parEvalMapUnordered(env.cpuParallelism) { case Batched(events, entities, _) =>
-      val prepare = for {
-        _ <- Logger[F].debug(s"Processing batch of size ${events.size}")
-        nonAtomicFields <- NonAtomicFields.resolveTypes[F](env.resolver, entities)
-        _ <- rememberColumnNames(ref, nonAtomicFields.fields)
-        (bad, rows) <- transformToSpark[F](badProcessor, events, nonAtomicFields)
-      } yield (bad, rows, SparkSchema.forBatch(nonAtomicFields.fields))
+      env.cpuPermit.surround {
+        val prepare = for {
+          _ <- Logger[F].debug(s"Processing batch of size ${events.size}")
+          nonAtomicFields <- NonAtomicFields.resolveTypes[F](env.resolver, entities)
+          _ <- rememberColumnNames(ref, nonAtomicFields.fields)
+          (bad, rows) <- transformToSpark[F](badProcessor, events, nonAtomicFields)
+        } yield (bad, rows, SparkSchema.forBatch(nonAtomicFields.fields))
 
-      prepare.flatMap { case (bad, rows, schema) =>
-        val sink = NonEmptyList.fromList(rows) match {
-          case Some(nel) =>
-            for {
-              dfOnDisk <- env.lakeWriter.saveDataFrameToDisk(nel, schema)
-              _ <- rememberDataFrame(ref, dfOnDisk)
-            } yield ()
-          case None =>
-            Logger[F].info(s"An in-memory batch yielded zero good events.  Nothing will be saved to local disk.")
-        }
-
-        sink
-          .both(sendFailedEvents(env, bad))
-          .flatTap { _ =>
-            Logger[F].debug(s"Finished processing batch of size ${events.size}")
+        prepare.flatMap { case (bad, rows, schema) =>
+          val sink = NonEmptyList.fromList(rows) match {
+            case Some(nel) =>
+              for {
+                dfOnDisk <- env.lakeWriter.saveDataFrameToDisk(nel, schema)
+                _ <- rememberDataFrame(ref, dfOnDisk)
+              } yield ()
+            case None =>
+              Logger[F].info(s"An in-memory batch yielded zero good events.  Nothing will be saved to local disk.")
           }
+
+          sink
+            .both(sendFailedEvents(env, bad))
+            .flatTap { _ =>
+              Logger[F].debug(s"Finished processing batch of size ${events.size}")
+            }
+        }
       }
     }.drain
 
@@ -173,17 +175,19 @@ object Processing {
     processor: BadRowProcessor
   ): Pipe[F, Chunk[ByteBuffer], ParseResult] =
     _.parEvalMapUnordered(env.cpuParallelism) { chunk =>
-      for {
-        numBytes <- Sync[F].delay(Foldable[Chunk].sumBytes(chunk))
-        (badRows, events) <- Foldable[Chunk].traverseSeparateUnordered(chunk) { byteBuffer =>
-                               Sync[F].delay {
-                                 Event.parseBytes(byteBuffer).toEither.leftMap { failure =>
-                                   val payload = BadRowRawPayload(StandardCharsets.UTF_8.decode(byteBuffer).toString)
-                                   BadRow.LoaderParsingError(processor, failure, payload)
+      env.cpuPermit.surround {
+        for {
+          numBytes <- Sync[F].delay(Foldable[Chunk].sumBytes(chunk))
+          (badRows, events) <- Foldable[Chunk].traverseSeparateUnordered(chunk) { byteBuffer =>
+                                 Sync[F].delay {
+                                   Event.parseBytes(byteBuffer).toEither.leftMap { failure =>
+                                     val payload = BadRowRawPayload(StandardCharsets.UTF_8.decode(byteBuffer).toString)
+                                     BadRow.LoaderParsingError(processor, failure, payload)
+                                   }
                                  }
                                }
-                             }
-      } yield ParseResult(events, badRows, numBytes)
+        } yield ParseResult(events, badRows, numBytes)
+      }
     }
 
   private implicit def batchable: BatchUp.Batchable[ParseResult, Batched] = new BatchUp.Batchable[ParseResult, Batched] {
@@ -236,7 +240,7 @@ object Processing {
           for {
             _ <- Logger[F].info(s"Ready to Write and commit $eventCount events to the lake.")
             _ <- Logger[F].info(s"Non atomic columns: [${state.nonAtomicColumnNames.toSeq.sorted.mkString(",")}]")
-            _ <- env.lakeWriter.commit(nel)
+            _ <- env.cpuPermit.surround(env.lakeWriter.commit(nel))
             now <- Sync[F].realTime
             _ <- Logger[F].info(s"Finished writing and committing $eventCount events to the lake.")
             _ <- env.metrics.addCommitted(eventCount)

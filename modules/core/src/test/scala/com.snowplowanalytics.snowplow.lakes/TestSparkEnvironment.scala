@@ -40,7 +40,8 @@ object TestSparkEnvironment {
     metrics         = testMetrics,
     inMemBatchBytes = 1000000L,
     cpuParallelism  = 1,
-    windowing       = EventProcessingConfig.TimedWindows(1.minute, 1.0)
+    windowing       = EventProcessingConfig.TimedWindows(1.minute, 1.0),
+    cpuPermit       = Resource.unit[IO]
   )
 
   private def testSourceAndAck(windows: List[List[TokenedEvents]]): SourceAndAck[IO] =
