@@ -19,6 +19,7 @@
 
   "output": {
 
+    ## -- DELTA OUTPUT FORMAT -- ##
     "good": {
       # -- URI of the bucket where the data lake will be written (required)
       # -- For a GCS bucket, the uri should start with `gs://`
@@ -34,6 +35,75 @@
         "dvce_created_tstamp"
       ]
     }
+
+    ## -- HUDI OUTPUT FORMAT -- ##
+#   "good": {
+#
+#     # -- Tell the loader to use Hudi output format
+#     "type": "Hudi"
+#
+#     # -- URI of the bucket where the data lake will be written (required)
+#     # -- For a GCS bucket, the uri should start with `gs://`
+#     "location": "gs://my-bucket/events
+#
+#     # -- Any valid hudi configuration key/value.
+#     # -- This can be blank in most setups because the loader already sets sensible defaults.
+#     "hudiWriteOptions": {
+#       "hoodie.metadata.index.column.stats.column.list": "load_tstamp,collector_tstamp,derived_tstamp,dvce_created_tstamp"
+#     }
+#
+#     # -- Any valid hudi table option
+#     "hudiWriteOptions": {
+#       "hoodie.keygen.timebased.output.dateformat": "yyyy-MM-dd"
+#     }
+#   }
+
+    ## -- ICEBERG OUTPUT FORMAT, HADOOP CATALOG -- ##
+#   "good": {
+#
+#     # -- Tell the loader to use Iceberg + Hadoop
+#     "type": "IcebergHadoop"
+#
+#     # -- URI of the bucket where the data lake will be written (required)
+#     # -- For a GCS bucket, the uri should start with `gs://`
+#     "location": "gs://my-bucket/events
+#
+#     # -- Name of the database in the hadoop catalog (required)
+#     "database": "snowplow"
+#
+#     # -- Name of the table in the hadoop catalog (required)
+#     "table": "events"
+#   }
+
+    ## -- ICEBERG OUTPUT FORMAT, BIGLAKE CATALOG -- ##
+#   "good": {
+#
+#     # -- Tell the loader to use Iceberg + BigLake
+#     "type": "IcebergBigLake"
+#
+#     # -- URI of the bucket where the data lake will be written (required)
+#     # -- For a GCS bucket, the uri should start with `gs://`
+#     "location": "gs://my-bucket/events
+#
+#     # -- Name of the biglake catalog (required)
+#     "catalog": "snowplow"
+#
+#     # -- Name of the database in the biglake catalog (required)
+#     "database": "atomic"
+#
+#     # -- Name of the table in the biglake catalog (required)
+#     "table": "events"
+#
+#     # -- Name of the BigQuery connection, which has permissions to access the lake (required)
+#     "connection": "snowplow-connection"
+#
+#     # -- Name of the BigQuery dataset to contain the Iceberg BigLake table (required)
+#     "bqDataset": "snowplow"
+#
+#     # -- GCP Region where the BigLake resides (required)
+#     "region": "europe-west1"
+#
+#   }
 
     "bad": {
       # -- Output pubsub topic for emitting failed events that could not be processed (required)
