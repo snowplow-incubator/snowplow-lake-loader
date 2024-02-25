@@ -231,7 +231,7 @@ object Processing {
         env.badSink.sinkSimple(ListOfList.of(List(serialized)))
     } else Applicative[F].unit
 
-  private def finalizeWindow[F[_]: Sync](
+  private def finalizeWindow[F[_]: Async](
     env: Environment[F],
     ref: Ref[F, WindowState],
     realTimeWindowStarted: FiniteDuration
@@ -253,6 +253,6 @@ object Processing {
           Logger[F].info("A window yielded zero good events.  Nothing will be written into the lake.")
       }
 
-      Stream.eval(commit) >> Stream.emits(state.tokens.reverse)
+      Stream.eval(commit) >> Stream.emits(state.tokens.reverse) >> Stream.sleep[F](5.minutes).drain
     }
 }
