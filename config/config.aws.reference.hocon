@@ -4,7 +4,7 @@
     "streamName": "snowplow-enriched-events"
 
     # -- name to use for the KCL dynamodb table
-    "appName": "snowplow-snowflake-loader"
+    "appName": "snowplow-lake-loader"
 
     # -- From where the loader should start consuming if this is the first time it is run.
     # -- On subsequent runs, it will always resume from where it last checkpointed.
