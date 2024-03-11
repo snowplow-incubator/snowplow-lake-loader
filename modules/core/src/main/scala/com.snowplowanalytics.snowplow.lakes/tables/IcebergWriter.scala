@@ -25,46 +25,23 @@ import com.snowplowanalytics.snowplow.lakes.processing.SparkSchema
  */
 abstract class IcebergWriter(config: Config.Iceberg) extends Writer {
 
-  /** Abstract methods */
-
-  def extraTableProperties: Map[String, String]
-
-  def requiresCreateNamespace: Boolean
-
-  /* End of abstract methods */
-
   private implicit def logger[F[_]: Sync] = Slf4jLogger.getLogger[F]
 
   // The name is not important, outside of this app
   final val sparkCatalog: String = "iceberg_catalog"
 
-  private val defaultTableProperties: Map[String, String] =
-    Map(
-      "write.spark.accept-any-schema" -> "true"
-    )
-
-  override def prepareTable[F[_]: Sync](spark: SparkSession): F[Unit] = {
-    val tableProps = (defaultTableProperties ++ extraTableProperties)
-      .map { case (k, v) =>
-        s"'$k'='$v'"
-      }
-      .mkString(", ")
-
+  override def prepareTable[F[_]: Sync](spark: SparkSession): F[Unit] =
     Logger[F].info(s"Creating Iceberg table $fqTable if it does not already exist...") >>
       Sync[F].blocking {
-        if (requiresCreateNamespace) {
-          spark.sql(s"CREATE NAMESPACE IF NOT EXISTS $sparkCatalog")
-        }
-        spark.sql(s"CREATE DATABASE IF NOT EXISTS $fqDatabase")
         spark.sql(s"""
           CREATE TABLE IF NOT EXISTS $fqTable
           (${SparkSchema.ddlForCreate})
           USING ICEBERG
           PARTITIONED BY (date(load_tstamp), event_name)
-          TBLPROPERTIES($tableProps)
+          TBLPROPERTIES('write.spark.accept-any-schema'='true')
+          $locationClause
         """)
       }.void
-  }
 
   override def write[F[_]: Sync](df: DataFrame): F[Unit] =
     Sync[F].blocking {
@@ -80,18 +57,13 @@ abstract class IcebergWriter(config: Config.Iceberg) extends Writer {
   private def fqTable: String =
     s"$sparkCatalog.${config.sparkDatabase}.${config.table}"
 
-  // Fully qualified database name
-  private def fqDatabase: String =
-    s"$sparkCatalog.${config.sparkDatabase}"
+  private def locationClause: String =
+    config match {
+      case _: Config.IcebergHadoop =>
+        // Hadoop catalog does not allow overriding path-based location
+        ""
+      case _ =>
+        s"LOCATION '${config.location}'"
+    }
 
-}
-
-object IcebergWriter {
-
-  abstract class WithDefaults(config: Config.Iceberg) extends IcebergWriter(config: Config.Iceberg) {
-
-    override def requiresCreateNamespace: Boolean = false
-
-    override def extraTableProperties: Map[String, String] = Map.empty
-  }
 }

@@ -94,12 +94,6 @@
 #     # -- Name of the table in the biglake catalog (required)
 #     "table": "events"
 #
-#     # -- Name of the BigQuery connection, which has permissions to access the lake (required)
-#     "connection": "snowplow-connection"
-#
-#     # -- Name of the BigQuery dataset to contain the Iceberg BigLake table (required)
-#     "bqDataset": "snowplow"
-#
 #     # -- GCP Region where the BigLake resides (required)
 #     "region": "europe-west1"
 #

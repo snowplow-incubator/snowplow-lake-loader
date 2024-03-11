@@ -57,6 +57,7 @@ object Config {
   sealed trait Iceberg extends Target {
     def sparkDatabase: String
     def table: String
+    def location: URI
   }
 
   case class IcebergHadoop(
@@ -88,8 +89,6 @@ object Config {
     catalog: String,
     database: String,
     table: String,
-    connection: String,
-    bqDataset: String,
     region: String, // (of biglake) also known as location in biglake docs.
     location: URI
   ) extends Iceberg {

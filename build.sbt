@@ -91,6 +91,6 @@ lazy val gcpBiglake: Project = gcp
   .withId("gcpBiglake")
   .settings(target := (biglake / target).value / "gcp")
   .settings(BuildSettings.biglakeAppSettings)
-  .dependsOn(hudi % "runtime->runtime")
+  .dependsOn(biglake % "runtime->runtime")
 
 ThisBuild / fork := true
