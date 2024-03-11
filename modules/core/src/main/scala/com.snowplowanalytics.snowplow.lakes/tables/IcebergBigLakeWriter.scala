@@ -25,11 +25,4 @@ class IcebergBigLakeWriter(config: Config.IcebergBigLake) extends IcebergWriter(
       s"spark.sql.catalog.$sparkCatalog.warehouse" -> config.location.toString
     )
 
-  override def extraTableProperties: Map[String, String] =
-    Map(
-      "bq_table" -> s"${config.bqDataset}.${config.table}",
-      "bq_connection" -> s"projects/${config.project}/locations/${config.region}/connections/${config.connection}"
-    )
-
-  override def requiresCreateNamespace: Boolean = true
 }

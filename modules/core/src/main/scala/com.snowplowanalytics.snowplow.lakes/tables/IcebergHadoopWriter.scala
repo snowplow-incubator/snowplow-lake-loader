@@ -12,7 +12,7 @@ package com.snowplowanalytics.snowplow.lakes.tables
 
 import com.snowplowanalytics.snowplow.lakes.Config
 
-class IcebergHadoopWriter(config: Config.IcebergHadoop) extends IcebergWriter.WithDefaults(config) {
+class IcebergHadoopWriter(config: Config.IcebergHadoop) extends IcebergWriter(config) {
   override def sparkConfig: Map[String, String] =
     Map(
       "spark.sql.extensions" -> "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions",
