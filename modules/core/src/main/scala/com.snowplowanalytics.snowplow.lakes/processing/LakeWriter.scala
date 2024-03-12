@@ -18,7 +18,7 @@ import org.apache.spark.sql.types.StructType
 
 import com.snowplowanalytics.snowplow.runtime.HealthProbe
 import com.snowplowanalytics.snowplow.lakes.Config
-import com.snowplowanalytics.snowplow.lakes.tables.{DeltaWriter, HudiWriter, IcebergBigLakeWriter, IcebergHadoopWriter, Writer}
+import com.snowplowanalytics.snowplow.lakes.tables.{DeltaWriter, HudiWriter, IcebergWriter, Writer}
 
 trait LakeWriter[F[_]] {
 
@@ -38,10 +38,9 @@ object LakeWriter {
     target: Config.Target
   ): Resource[F, (LakeWriter[F], F[HealthProbe.Status])] = {
     val w = target match {
-      case c: Config.Delta          => new DeltaWriter(c)
-      case c: Config.Hudi           => new HudiWriter(c)
-      case c: Config.IcebergHadoop  => new IcebergHadoopWriter(c)
-      case c: Config.IcebergBigLake => new IcebergBigLakeWriter(c)
+      case c: Config.Delta   => new DeltaWriter(c)
+      case c: Config.Hudi    => new HudiWriter(c)
+      case c: Config.Iceberg => new IcebergWriter(c)
     }
     for {
       session <- SparkUtils.session[F](config, w)

@@ -81,6 +81,34 @@
 #     "table": "events"
 #   }
 
+    ## -- ICEBERG OUTPUT FORMAT -- ##
+#   "good": {
+#
+#     # -- Tell the loader to use Iceberg
+#     "type": "Iceberg"
+#
+#     # -- URI of the bucket where the data lake will be written (required)
+#     # -- For Azure blob storage, the uri should start with `abfs://`
+#     "location": "abfs://snowplow@example.dfs.core.windows.net/events"
+#
+#     # -- Name of the database in the catalog (required)
+#     "database": "snowplow"
+#
+#     # -- Name of the table in the catalog (required)
+#     "table": "events"
+#
+#     # -- Details of the Iceberg catalog
+#     # -- Hadoop is the only supported catalog type on Azure.
+#     "catalog": {
+#
+#       # -- Any valid catalog config option from the Iceberg documentation
+#       "options": {
+#          # -- For example, to enable the catalog cache
+#          "cache-enabled": "true"
+#       }
+#     }
+#   }
+
     "bad": {
       # -- Azure Event Hub name for the source of enriched events (required)
       "topicName": "sp-dev-bad"
