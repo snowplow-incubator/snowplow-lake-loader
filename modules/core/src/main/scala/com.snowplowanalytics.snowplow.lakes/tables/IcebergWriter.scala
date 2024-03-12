@@ -55,7 +55,7 @@ abstract class IcebergWriter(config: Config.Iceberg) extends Writer {
 
   // Fully qualified table name
   private def fqTable: String =
-    s"$sparkCatalog.${config.sparkDatabase}.${config.table}"
+    s"$sparkCatalog.${config.database}.${config.table}"
 
   private def locationClause: String =
     config match {

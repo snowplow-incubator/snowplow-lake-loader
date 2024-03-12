@@ -55,7 +55,7 @@ object Config {
   ) extends Target
 
   sealed trait Iceberg extends Target {
-    def sparkDatabase: String
+    def database: String
     def table: String
     def location: URI
   }
@@ -64,25 +64,7 @@ object Config {
     database: String,
     table: String,
     location: URI
-  ) extends Iceberg {
-
-    override def sparkDatabase: String = database
-  }
-
-  case class IcebergSnowflake(
-    host: String,
-    user: String,
-    role: Option[String],
-    password: String,
-    database: String,
-    schema: String,
-    table: String,
-    location: URI
-  ) extends Iceberg {
-
-    /** Spark uses the term "database" where Snowflake uses the term "schema" */
-    override def sparkDatabase: String = schema
-  }
+  ) extends Iceberg
 
   case class IcebergBigLake(
     project: String,
@@ -91,9 +73,7 @@ object Config {
     table: String,
     region: String, // (of biglake) also known as location in biglake docs.
     location: URI
-  ) extends Iceberg {
-    override def sparkDatabase: String = database
-  }
+  ) extends Iceberg
 
   case class GcpUserAgent(productName: String)
 
