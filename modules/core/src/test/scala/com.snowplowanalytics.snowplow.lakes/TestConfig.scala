@@ -52,10 +52,13 @@ object TestConfig {
       case Iceberg =>
         s"""
         output.good: {
-          type: "IcebergHadoop"
+          type: "Iceberg"
           database: "test"
           table: "events"
           location: "${tmpDir.toNioPath.toUri}"
+          catalog: {
+            type: Hadoop
+          }
         }
         """
     }

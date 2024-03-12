@@ -23,12 +23,21 @@ import com.snowplowanalytics.snowplow.lakes.processing.SparkSchema
  * A base [[Writer]] for all flavours of Iceberg. Different concrete classes support different types
  * of catalog
  */
-abstract class IcebergWriter(config: Config.Iceberg) extends Writer {
+class IcebergWriter(config: Config.Iceberg) extends Writer {
 
   private implicit def logger[F[_]: Sync] = Slf4jLogger.getLogger[F]
 
   // The name is not important, outside of this app
-  final val sparkCatalog: String = "iceberg_catalog"
+  private final val sparkCatalog: String = "iceberg_catalog"
+
+  override def sparkConfig: Map[String, String] =
+    Map(
+      "spark.sql.extensions" -> "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions",
+      s"spark.sql.catalog.$sparkCatalog" -> "org.apache.iceberg.spark.SparkCatalog",
+      s"spark.sql.catalog.$sparkCatalog.io-impl" -> "org.apache.iceberg.io.ResolvingFileIO"
+    ) ++ catalogConfig.map { case (k, v) =>
+      s"spark.sql.catalog.$sparkCatalog.$k" -> v
+    }
 
   override def prepareTable[F[_]: Sync](spark: SparkSession): F[Unit] =
     Logger[F].info(s"Creating Iceberg table $fqTable if it does not already exist...") >>
@@ -55,15 +64,36 @@ abstract class IcebergWriter(config: Config.Iceberg) extends Writer {
 
   // Fully qualified table name
   private def fqTable: String =
-    s"$sparkCatalog.${config.database}.${config.table}"
+    s"$sparkCatalog.`${config.database}`.`${config.table}`"
 
   private def locationClause: String =
-    config match {
-      case _: Config.IcebergHadoop =>
+    config.catalog match {
+      case _: Config.IcebergCatalog.Hadoop =>
         // Hadoop catalog does not allow overriding path-based location
         ""
       case _ =>
         s"LOCATION '${config.location}'"
+    }
+
+  private def catalogConfig: Map[String, String] =
+    config.catalog match {
+      case c: Config.IcebergCatalog.Hadoop =>
+        Map(
+          "type" -> "hadoop",
+          "warehouse" -> config.location.toString
+        ) ++ c.options
+      case c: Config.IcebergCatalog.BigLake =>
+        Map(
+          "catalog-impl" -> "org.apache.iceberg.gcp.biglake.BigLakeCatalog",
+          "gcp_project" -> c.project,
+          "gcp_location" -> c.region,
+          "blms_catalog" -> c.name,
+          "warehouse" -> config.location.toString
+        ) ++ c.options
+      case c: Config.IcebergCatalog.Glue =>
+        Map(
+          "catalog-impl" -> "org.apache.iceberg.aws.glue.GlueCatalog"
+        ) ++ c.options
     }
 
 }

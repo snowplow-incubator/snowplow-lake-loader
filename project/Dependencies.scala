@@ -35,6 +35,7 @@ object Dependencies {
     val azureSdk = "1.11.1"
     val sentry   = "6.25.2"
     val awsSdk1  = "1.12.646"
+    val awsSdk2  = "2.20.43" // Match common-streams
 
     // Snowplow
     val streams    = "0.4.0"
@@ -72,9 +73,12 @@ object Dependencies {
   val hiveCommon   = "org.apache.hive"             % "hive-common"               % V.hive
 
   // java
-  val slf4j         = "org.slf4j" % "slf4j-simple"   % V.slf4j
-  val azureIdentity = "com.azure" % "azure-identity" % V.azureSdk
-  val sentry        = "io.sentry" % "sentry"         % V.sentry
+  val slf4j         = "org.slf4j"              % "slf4j-simple"   % V.slf4j
+  val azureIdentity = "com.azure"              % "azure-identity" % V.azureSdk
+  val sentry        = "io.sentry"              % "sentry"         % V.sentry
+  val awsGlue       = "software.amazon.awssdk" % "glue"           % V.awsSdk2 % Runtime
+  val awsS3         = "software.amazon.awssdk" % "s3"             % V.awsSdk2 % Runtime
+  val awsSts        = "software.amazon.awssdk" % "sts"            % V.awsSdk2 % Runtime
 
   // transitive overrides
   val protobuf   = "com.google.protobuf" % "protobuf-java"                      % V.protobuf
@@ -129,7 +133,10 @@ object Dependencies {
   val awsDependencies = Seq(
     kinesis,
     hadoopAws,
-    awsBundle // Dependency on aws sdk v1 will likely be removed in the next release of hadoop-aws
+    awsBundle, // Dependency on aws sdk v1 will likely be removed in the next release of hadoop-aws
+    awsGlue,
+    awsS3,
+    awsSts
   ) ++ commonRuntimeDependencies
 
   val azureDependencies = Seq(

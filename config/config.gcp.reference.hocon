@@ -58,45 +58,45 @@
 #     }
 #   }
 
-    ## -- ICEBERG OUTPUT FORMAT, HADOOP CATALOG -- ##
+    ## -- ICEBERG OUTPUT FORMAT -- ##
 #   "good": {
 #
-#     # -- Tell the loader to use Iceberg + Hadoop
-#     "type": "IcebergHadoop"
+#     # -- Tell the loader to use Iceberg
+#     "type": "Iceberg"
 #
 #     # -- URI of the bucket where the data lake will be written (required)
 #     # -- For a GCS bucket, the uri should start with `gs://`
 #     "location": "gs://my-bucket/events
 #
-#     # -- Name of the database in the hadoop catalog (required)
+#     # -- Name of the database in the catalog (required)
 #     "database": "snowplow"
 #
-#     # -- Name of the table in the hadoop catalog (required)
-#     "table": "events"
-#   }
-
-    ## -- ICEBERG OUTPUT FORMAT, BIGLAKE CATALOG -- ##
-#   "good": {
-#
-#     # -- Tell the loader to use Iceberg + BigLake
-#     "type": "IcebergBigLake"
-#
-#     # -- URI of the bucket where the data lake will be written (required)
-#     # -- For a GCS bucket, the uri should start with `gs://`
-#     "location": "gs://my-bucket/events
-#
-#     # -- Name of the biglake catalog (required)
-#     "catalog": "snowplow"
-#
-#     # -- Name of the database in the biglake catalog (required)
-#     "database": "atomic"
-#
-#     # -- Name of the table in the biglake catalog (required)
+#     # -- Name of the table in the catalog (required)
 #     "table": "events"
 #
-#     # -- GCP Region where the BigLake resides (required)
-#     "region": "europe-west1"
+#     # -- Details of the Iceberg catalog
+#     "catalog": {
 #
+#       # -- The catalog implementation.
+#       # -- Options are `BigLake` for the GCP BigLake/BigQuery, or Hadoop.
+#       # -- Option, default Hadoop.
+#       "type": "BigLake"
+#
+#       # -- GCP project name. Required if using the BigLake catalog type.
+#       "project": "myproject"
+#
+#       # -- GCP region. Required if using the BigLake catalog type.
+#       "region": "europe-west3"
+#
+#       # -- Catalog name. Required if using the BigLake catalog type.
+#       "name": "mycatalog"
+#
+#       # -- Any other valid catalog config option from the Iceberg documentation
+#       "options": {
+#          # -- For example, to enable the catalog cache
+#          "cache-enabled": "true"
+#       }
+#     }
 #   }
 
     "bad": {
