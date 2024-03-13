@@ -66,13 +66,13 @@ private[processing] object SparkUtils {
   ): F[DataFrameOnDisk] = {
     val count = rows.size
     for {
-      viewName <- Sync[F].delay(UUID.randomUUID.toString.replaceAll("-", ""))
+      viewName <- Sync[F].delay("v" + UUID.randomUUID.toString.replaceAll("-", ""))
       _ <- Logger[F].debug(s"Saving batch of $count events to local disk")
       _ <- Sync[F].blocking {
              spark
                .createDataFrame(rows.toList.asJava, schema)
                .coalesce(1)
-               .localCheckpoint() // REMOVE this line to use memory instead of disk
+               .localCheckpoint()
                .createTempView(viewName)
            }
     } yield DataFrameOnDisk(viewName, count)
