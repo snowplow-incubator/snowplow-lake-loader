@@ -1,0 +1,316 @@
+
+{
+  "$schema": "http://iglucentral.com/schemas/com.snowplowanalytics.self-desc/schema/jsonschema/1-0-0#",
+  "description": "Test1",
+  "self": {
+    "vendor": "com.myvendor",
+    "name": "test24",
+    "format": "jsonschema",
+    "version": "1-0-0"
+  },
+  "type": "object",
+  "properties": {
+    "field01": {
+      "type": "number"
+    },
+    "field02": {
+      "type": "number"
+    },
+    "field03": {
+      "type": "number"
+    },
+    "field04": {
+      "type": "number"
+    },
+    "field05": {
+      "type": "number"
+    },
+    "field06": {
+      "type": "number"
+    },
+    "field07": {
+      "type": "number"
+    },
+    "field08": {
+      "type": "number"
+    },
+    "field09": {
+      "type": "number"
+    },
+    "field10": {
+      "type": "number"
+    },
+    "field11": {
+      "type": "number"
+    },
+    "field12": {
+      "type": "number"
+    },
+    "field13": {
+      "type": "number"
+    },
+    "field14": {
+      "type": "number"
+    },
+    "field15": {
+      "type": "number"
+    },
+    "field16": {
+      "type": "number"
+    },
+    "field17": {
+      "type": "number"
+    },
+    "field18": {
+      "type": "number"
+    },
+    "field19": {
+      "type": "number"
+    },
+    "field20": {
+      "type": "number"
+    },
+    "field21": {
+      "type": "number"
+    },
+    "field22": {
+      "type": "number"
+    },
+    "field23": {
+      "type": "number"
+    },
+    "field24": {
+      "type": "number"
+    },
+    "field25": {
+      "type": "number"
+    },
+    "field26": {
+      "type": "number"
+    },
+    "field27": {
+      "type": "number"
+    },
+    "field28": {
+      "type": "number"
+    },
+    "field29": {
+      "type": "number"
+    },
+    "field30": {
+      "type": "number"
+    },
+    "field31": {
+      "type": "number"
+    },
+    "field32": {
+      "type": "number"
+    },
+    "field33": {
+      "type": "number"
+    },
+    "field34": {
+      "type": "number"
+    },
+    "field35": {
+      "type": "number"
+    },
+    "field36": {
+      "type": "number"
+    },
+    "field37": {
+      "type": "number"
+    },
+    "field38": {
+      "type": "number"
+    },
+    "field39": {
+      "type": "number"
+    },
+    "field40": {
+      "type": "number"
+    },
+    "field41": {
+      "type": "number"
+    },
+    "field42": {
+      "type": "number"
+    },
+    "field43": {
+      "type": "number"
+    },
+    "field44": {
+      "type": "number"
+    },
+    "field45": {
+      "type": "number"
+    },
+    "field46": {
+      "type": "number"
+    },
+    "field47": {
+      "type": "number"
+    },
+    "field48": {
+      "type": "number"
+    },
+    "field49": {
+      "type": "number"
+    },
+    "field50": {
+      "type": "number"
+    },
+    "field51": {
+      "type": "number"
+    },
+    "field52": {
+      "type": "number"
+    },
+    "field53": {
+      "type": "number"
+    },
+    "field54": {
+      "type": "number"
+    },
+    "field55": {
+      "type": "number"
+    },
+    "field56": {
+      "type": "number"
+    },
+    "field57": {
+      "type": "number"
+    },
+    "field58": {
+      "type": "number"
+    },
+    "field59": {
+      "type": "number"
+    },
+    "field60": {
+      "type": "number"
+    },
+    "field61": {
+      "type": "number"
+    },
+    "field62": {
+      "type": "number"
+    },
+    "field63": {
+      "type": "number"
+    },
+    "field64": {
+      "type": "number"
+    },
+    "field65": {
+      "type": "number"
+    },
+    "field66": {
+      "type": "number"
+    },
+    "field67": {
+      "type": "number"
+    },
+    "field68": {
+      "type": "number"
+    },
+    "field69": {
+      "type": "number"
+    },
+    "field70": {
+      "type": "number"
+    },
+    "field71": {
+      "type": "number"
+    },
+    "field72": {
+      "type": "number"
+    },
+    "field73": {
+      "type": "number"
+    },
+    "field74": {
+      "type": "number"
+    },
+    "field75": {
+      "type": "number"
+    },
+    "field76": {
+      "type": "number"
+    },
+    "field77": {
+      "type": "number"
+    },
+    "field78": {
+      "type": "number"
+    },
+    "field79": {
+      "type": "number"
+    },
+    "field80": {
+      "type": "number"
+    },
+    "field81": {
+      "type": "number"
+    },
+    "field82": {
+      "type": "number"
+    },
+    "field83": {
+      "type": "number"
+    },
+    "field84": {
+      "type": "number"
+    },
+    "field85": {
+      "type": "number"
+    },
+    "field86": {
+      "type": "number"
+    },
+    "field87": {
+      "type": "number"
+    },
+    "field88": {
+      "type": "number"
+    },
+    "field89": {
+      "type": "number"
+    },
+    "field90": {
+      "type": "number"
+    },
+    "field91": {
+      "type": "number"
+    },
+    "field92": {
+      "type": "number"
+    },
+    "field93": {
+      "type": "number"
+    },
+    "field94": {
+      "type": "number"
+    },
+    "field95": {
+      "type": "number"
+    },
+    "field96": {
+      "type": "number"
+    },
+    "field97": {
+      "type": "number"
+    },
+    "field98": {
+      "type": "number"
+    },
+    "field99": {
+      "type": "number"
+    },
+    "field100": {
+      "type": "number"
+    }
+  },
+  "additionalProperties": false
+}
+
