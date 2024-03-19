@@ -33,6 +33,8 @@ private[processing] object SparkCaster extends Caster[Any] {
   override def timestampValue(v: Instant): Instant                = v
   override def dateValue(v: LocalDate): LocalDate                 = v
   override def arrayValue(vs: List[Any]): List[Any]               = vs
-  override def structValue(vs: List[Caster.NamedValue[Any]]): Row = Row.fromSeq(vs.map(_.value))
+  override def structValue(vs: List[Caster.NamedValue[Any]]): Row = row(vs)
+
+  def row(vs: Seq[Caster.NamedValue[Any]]): Row = Row.fromSeq(vs.map(_.value))
 
 }

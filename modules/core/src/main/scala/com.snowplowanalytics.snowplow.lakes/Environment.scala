@@ -20,6 +20,7 @@ import org.http4s.blaze.client.BlazeClientBuilder
 import io.sentry.Sentry
 
 import com.snowplowanalytics.iglu.client.resolver.Resolver
+import com.snowplowanalytics.iglu.core.SchemaCriterion
 import com.snowplowanalytics.snowplow.sources.{EventProcessingConfig, SourceAndAck}
 import com.snowplowanalytics.snowplow.sinks.Sink
 import com.snowplowanalytics.snowplow.lakes.processing.LakeWriter
@@ -56,7 +57,8 @@ case class Environment[F[_]](
   cpuParallelism: Int,
   inMemBatchBytes: Long,
   windowing: EventProcessingConfig.TimedWindows,
-  cpuPermit: Resource[F, Unit]
+  cpuPermit: Resource[F, Unit],
+  schemasToSkip: List[SchemaCriterion]
 )
 
 object Environment {
@@ -91,7 +93,8 @@ object Environment {
       cpuParallelism  = cpuParallelism,
       inMemBatchBytes = config.main.inMemBatchBytes,
       windowing       = windowing,
-      cpuPermit       = cpuSemaphore.permit
+      cpuPermit       = cpuSemaphore.permit,
+      schemasToSkip   = config.main.skipSchemas
     )
 
   private def enableSentry[F[_]: Sync](appInfo: AppInfo, config: Option[Config.Sentry]): Resource[F, Unit] =

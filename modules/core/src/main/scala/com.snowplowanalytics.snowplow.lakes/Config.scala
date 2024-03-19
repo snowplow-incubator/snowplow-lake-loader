@@ -21,7 +21,9 @@ import java.net.URI
 import scala.concurrent.duration.FiniteDuration
 
 import com.snowplowanalytics.iglu.client.resolver.Resolver.ResolverConfig
-import com.snowplowanalytics.snowplow.runtime.{Metrics => CommonMetrics, Telemetry}
+import com.snowplowanalytics.iglu.core.SchemaCriterion
+import com.snowplowanalytics.snowplow.runtime.{AcceptedLicense, Metrics => CommonMetrics, Telemetry}
+import com.snowplowanalytics.iglu.core.circe.CirceIgluCodecs.schemaCriterionDecoder
 import com.snowplowanalytics.snowplow.runtime.HealthProbe.decoders._
 
 case class Config[+Source, +Sink](
@@ -32,7 +34,9 @@ case class Config[+Source, +Sink](
   windowing: FiniteDuration,
   spark: Config.Spark,
   telemetry: Telemetry.Config,
-  monitoring: Config.Monitoring
+  monitoring: Config.Monitoring,
+  license: AcceptedLicense,
+  skipSchemas: List[SchemaCriterion]
 )
 
 object Config {
@@ -118,6 +122,11 @@ object Config {
     implicit val metricsDecoder     = deriveConfiguredDecoder[Metrics]
     implicit val healthProbeDecoder = deriveConfiguredDecoder[HealthProbe]
     implicit val monitoringDecoder  = deriveConfiguredDecoder[Monitoring]
+
+    // TODO add specific lake-loader docs for license
+    implicit val licenseDecoder =
+      AcceptedLicense.decoder(AcceptedLicense.DocumentationLink("https://docs.snowplow.io/limited-use-license-1.0/"))
+
     deriveConfiguredDecoder[Config[Source, Sink]]
   }
 

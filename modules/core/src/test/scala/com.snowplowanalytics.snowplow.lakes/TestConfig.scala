@@ -37,6 +37,7 @@ object TestConfig {
     target match {
       case Delta =>
         s"""
+        $acceptLicense
         output.good: {
           type: "Delta"
           location: "$location"
@@ -44,6 +45,7 @@ object TestConfig {
         """
       case Hudi =>
         s"""
+        $acceptLicense
         output.good: {
           type: "Hudi"
           location: "$location"
@@ -51,6 +53,7 @@ object TestConfig {
         """
       case Iceberg =>
         s"""
+        $acceptLicense
         output.good: {
           type: "IcebergHadoop"
           database: "test"
@@ -60,5 +63,12 @@ object TestConfig {
         """
     }
   }
+
+  private def acceptLicense: String =
+    """
+    license: {
+      accept: true
+    }
+    """
 
 }

@@ -76,7 +76,8 @@ object MockEnvironment {
         inMemBatchBytes = 1000000L,
         cpuParallelism  = 1,
         windowing       = EventProcessingConfig.TimedWindows(1.minute, 1.0),
-        cpuPermit       = Resource.unit[IO]
+        cpuPermit       = Resource.unit[IO],
+        schemasToSkip   = List.empty
       )
       MockEnvironment(state, env)
     }
