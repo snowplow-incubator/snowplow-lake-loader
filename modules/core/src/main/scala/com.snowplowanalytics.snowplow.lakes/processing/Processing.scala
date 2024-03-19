@@ -114,7 +114,7 @@ object Processing {
       env.cpuPermit.surround {
         val prepare = for {
           _ <- Logger[F].debug(s"Processing batch of size ${events.size}")
-          nonAtomicFields <- NonAtomicFields.resolveTypes[F](env.resolver, entities)
+          nonAtomicFields <- NonAtomicFields.resolveTypes[F](env.resolver, entities, env.schemasToSkip)
           _ <- rememberColumnNames(ref, nonAtomicFields.fields)
           (bad, rows) <- transformToSpark[F](badProcessor, events, nonAtomicFields)
         } yield (bad, rows, SparkSchema.forBatch(nonAtomicFields.fields))
@@ -215,7 +215,7 @@ object Processing {
       Sync[F].delay {
         Transform
           .transformEvent[Any](processor, SparkCaster, event, entities)
-          .map(SparkCaster.structValue(_))
+          .map(SparkCaster.row(_))
       }
     }
 
