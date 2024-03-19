@@ -58,26 +58,30 @@ object Config {
     hudiTableOptions: Map[String, String]
   ) extends Target
 
-  sealed trait Iceberg extends Target {
-    def database: String
-    def table: String
-    def location: URI
+  case class Iceberg(
+    database: String,
+    table: String,
+    catalog: IcebergCatalog,
+    location: URI
+  ) extends Target
+
+  sealed trait IcebergCatalog
+
+  object IcebergCatalog {
+
+    case class Hadoop(options: Map[String, String]) extends IcebergCatalog
+
+    case class BigLake(
+      project: String,
+      name: String,
+      region: String,
+      options: Map[String, String]
+    ) extends IcebergCatalog
+
+    case class Glue(
+      options: Map[String, String]
+    ) extends IcebergCatalog
   }
-
-  case class IcebergHadoop(
-    database: String,
-    table: String,
-    location: URI
-  ) extends Iceberg
-
-  case class IcebergBigLake(
-    project: String,
-    catalog: String,
-    database: String,
-    table: String,
-    region: String, // (of biglake) also known as location in biglake docs.
-    location: URI
-  ) extends Iceberg
 
   case class GcpUserAgent(productName: String)
 
@@ -107,11 +111,12 @@ object Config {
   )
 
   implicit def decoder[Source: Decoder, Sink: Decoder]: Decoder[Config[Source, Sink]] = {
-    implicit val configuration = Configuration.default.withDiscriminator("type")
-    implicit val target        = deriveConfiguredDecoder[Target]
-    implicit val output        = deriveConfiguredDecoder[Output[Sink]]
-    implicit val gcpUserAgent  = deriveConfiguredDecoder[GcpUserAgent]
-    implicit val spark         = deriveConfiguredDecoder[Spark]
+    implicit val configuration  = Configuration.default.withDiscriminator("type")
+    implicit val icebergCatalog = deriveConfiguredDecoder[IcebergCatalog]
+    implicit val target         = deriveConfiguredDecoder[Target]
+    implicit val output         = deriveConfiguredDecoder[Output[Sink]]
+    implicit val gcpUserAgent   = deriveConfiguredDecoder[GcpUserAgent]
+    implicit val spark          = deriveConfiguredDecoder[Spark]
     implicit val sentryDecoder = deriveConfiguredDecoder[SentryM[Option]]
       .map[Option[Sentry]] {
         case SentryM(Some(dsn), tags) =>

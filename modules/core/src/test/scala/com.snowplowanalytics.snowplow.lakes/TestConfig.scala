@@ -55,10 +55,13 @@ object TestConfig {
         s"""
         $acceptLicense
         output.good: {
-          type: "IcebergHadoop"
+          type: "Iceberg"
           database: "test"
           table: "events"
           location: "${tmpDir.toNioPath.toUri}"
+          catalog: {
+            type: Hadoop
+          }
         }
         """
     }

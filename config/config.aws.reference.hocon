@@ -80,22 +80,38 @@
 #     }
 #   }
 
-    ## -- ICEBERG OUTPUT FORMAT, HADOOP CATALOG -- ##
+    ## -- ICEBERG OUTPUT FORMAT -- ##
 #   "good": {
 #
-#     # -- Tell the loader to use Iceberg + Hadoop
-#     "type": "IcebergHadoop"
+#     # -- Tell the loader to use Iceberg
+#     "type": "Iceberg"
 #
 #     # -- URI of the bucket where the data lake will be written (required)
 #     # -- For a S3 bucket, the uri should start with `s3a://`
 #     "location": "s3a://my-bucket/events
 #
-#     # -- Name of the database in the hadoop catalog (required)
+#     # -- Name of the database in the catalog (required)
 #     "database": "snowplow"
 #
-#     # -- Name of the table in the hadoop catalog (required)
+#     # -- Name of the table in the catalog (required)
 #     "table": "events"
+#
+#     # -- Details of the Iceberg catalog
+#     "catalog": {
+#
+#       # -- The catalog implementation.
+#       # -- Options are `Glue` for the AWS Glue catalog, or Hadoop.
+#       # -- Option, default Hadoop.
+#       "type": "Glue"
+#
+#       # -- Any other valid catalog config option from the Iceberg documentation
+#       "options": {
+#          # -- For example, to use a Glue catalog in a different account:
+#          "glue.id": "123456789"
+#       }
+#     }
 #   }
+
 
     "bad": {
       # -- output kinesis stream for emitting failed events that could not be processed
