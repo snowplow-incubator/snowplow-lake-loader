@@ -1,3 +1,14 @@
+Version 0.3.0 (2024-03-20)
+--------------------------
+Add AWS Glue as an Iceberg catalog (#55)
+Bump common-streams to 0.5.0 (#56)
+Fix crashing on invalid view name (#54)
+Remove Snowflake as an Iceberg catalog (#53)
+Fix and simplify BigLake as Iceberg catalog (#52)
+Change default log level of Delta libraries (#50)
+Adjust default spark memory configuration (#51)
+Azure: authenticate with Event Hubs using OAuth2 (#49)
+
 Version 0.2.0 (2024-01-29)
 --------------------------
 Fix regression: it is taking longer to commit a batch to the lake (#46)
