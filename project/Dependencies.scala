@@ -31,11 +31,12 @@ object Dependencies {
     val hive           = "3.1.3"
 
     // java
-    val slf4j    = "2.0.7"
-    val azureSdk = "1.11.1"
-    val sentry   = "6.25.2"
-    val awsSdk1  = "1.12.646"
-    val awsSdk2  = "2.20.43" // Match common-streams
+    val slf4j       = "2.0.7"
+    val azureSdk    = "1.11.1"
+    val sentry      = "6.25.2"
+    val awsSdk1     = "1.12.646"
+    val awsSdk2     = "2.20.43" // Match common-streams
+    val awsRegistry = "1.1.19"
 
     // Snowplow
     val streams    = "0.5.0"
@@ -65,6 +66,7 @@ object Dependencies {
   val sparkHive    = "org.apache.spark"           %% "spark-hive"                % V.spark
   val delta        = "io.delta"                   %% "delta-core"                % V.delta
   val hudi         = "org.apache.hudi"            %% "hudi-spark3.4-bundle"      % V.hudi
+  val hudiAws      = "org.apache.hudi"             % "hudi-aws"                  % V.hudi
   val iceberg      = "org.apache.iceberg"         %% "iceberg-spark-runtime-3.4" % V.iceberg
   val hadoopClient = "org.apache.hadoop"           % "hadoop-client-runtime"     % V.hadoop
   val hadoopAzure  = "org.apache.hadoop"           % "hadoop-azure"              % V.hadoop
@@ -73,12 +75,13 @@ object Dependencies {
   val hiveCommon   = "org.apache.hive"             % "hive-common"               % V.hive
 
   // java
-  val slf4j         = "org.slf4j"              % "slf4j-simple"   % V.slf4j
-  val azureIdentity = "com.azure"              % "azure-identity" % V.azureSdk
-  val sentry        = "io.sentry"              % "sentry"         % V.sentry
-  val awsGlue       = "software.amazon.awssdk" % "glue"           % V.awsSdk2 % Runtime
-  val awsS3         = "software.amazon.awssdk" % "s3"             % V.awsSdk2 % Runtime
-  val awsSts        = "software.amazon.awssdk" % "sts"            % V.awsSdk2 % Runtime
+  val slf4j         = "org.slf4j"              % "slf4j-simple"          % V.slf4j
+  val azureIdentity = "com.azure"              % "azure-identity"        % V.azureSdk
+  val sentry        = "io.sentry"              % "sentry"                % V.sentry
+  val awsGlue       = "software.amazon.awssdk" % "glue"                  % V.awsSdk2 % Runtime
+  val awsS3         = "software.amazon.awssdk" % "s3"                    % V.awsSdk2 % Runtime
+  val awsSts        = "software.amazon.awssdk" % "sts"                   % V.awsSdk2
+  val awsRegistry   = "software.amazon.glue"   % "schema-registry-serde" % V.awsRegistry
 
   // transitive overrides
   val protobuf   = "com.google.protobuf" % "protobuf-java"                      % V.protobuf
@@ -136,7 +139,7 @@ object Dependencies {
     awsBundle, // Dependency on aws sdk v1 will likely be removed in the next release of hadoop-aws
     awsGlue,
     awsS3,
-    awsSts
+    awsSts % Runtime
   ) ++ commonRuntimeDependencies
 
   val azureDependencies = Seq(
@@ -159,6 +162,13 @@ object Dependencies {
   val hudiDependencies = Seq(
     hudi      % Runtime,
     sparkHive % Runtime
+  )
+
+  val hudiAwsDependencies = Seq(
+    hudiAws,
+    sparkSql,
+    awsSts,
+    awsRegistry
   )
 
   val commonExclusions = Seq(

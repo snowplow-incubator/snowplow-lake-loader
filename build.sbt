@@ -57,6 +57,11 @@ lazy val hudi: Project = project
   .settings(libraryDependencies ++= Dependencies.hudiDependencies)
   .dependsOn(core % "test->test")
 
+lazy val hudiAws: Project = project
+  .in(file("packaging/hudi-aws"))
+  .settings(BuildSettings.hudiAwsPackagingSettings)
+  .settings(libraryDependencies ++= Dependencies.hudiAwsDependencies)
+
 lazy val biglake: Project = project
   .in(file("packaging/biglake"))
   .settings(BuildSettings.commonSettings ++ BuildSettings.biglakeSettings)
@@ -73,7 +78,7 @@ lazy val awsHudi: Project = aws
   .withId("awsHudi")
   .settings(target := (hudi / target).value / "aws")
   .settings(BuildSettings.hudiAppSettings)
-  .dependsOn(hudi % "runtime->runtime")
+  .dependsOn(hudi % "runtime->runtime", hudiAws)
 
 lazy val gcpHudi: Project = gcp
   .withId("gcpHudi")

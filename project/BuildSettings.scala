@@ -72,6 +72,10 @@ object BuildSettings {
     buildInfoKeys += BuildInfoKey("cloud" -> "Azure")
   )
 
+  lazy val hudiAwsPackagingSettings = commonSettings ++ Seq(
+    Compile / doc / sources := Seq()
+  )
+
   lazy val downloadUnmanagedJars = taskKey[Unit]("Downloads unmanaged Jars")
 
   lazy val gcpSettings = appSettings ++ Seq(
