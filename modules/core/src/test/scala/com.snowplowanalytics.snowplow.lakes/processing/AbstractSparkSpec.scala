@@ -12,6 +12,7 @@ package com.snowplowanalytics.snowplow.lakes.processing
 
 import cats.effect.IO
 import cats.effect.kernel.Resource
+import cats.implicits._
 import cats.effect.testing.specs2.CatsEffect
 import io.circe.Json
 import fs2.{Chunk, Stream}
@@ -26,6 +27,7 @@ import fs2.io.file.{Files, Path}
 
 import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer, SelfDescribingData}
 import com.snowplowanalytics.snowplow.analytics.scalasdk.{Event, SnowplowEvent}
+import com.snowplowanalytics.snowplow.analytics.scalasdk.SnowplowEvent.{Contexts, UnstructEvent}
 import com.snowplowanalytics.snowplow.lakes.{TestConfig, TestSparkEnvironment}
 import com.snowplowanalytics.snowplow.sources.TokenedEvents
 
@@ -37,8 +39,13 @@ abstract class AbstractSparkSpec extends Specification with CatsEffect {
 
   def is = sequential ^ s2"""
   The lake loader should:
-    Write a single window to a delta table $e1
-    Successfully write parquet file when there is an invalid schema evolution $e2
+    Write a single window of events into a lake table $e1
+    Create unstruct_* column for unstructured events with valid schemas $e2
+    Create recovery columns for unstructured events when schema evolution rules are broken $e3
+    Not create a unstruct_event column for a schema with no fields and additionalProperties false $e4
+    Create a unstruct_event column for a schema with no fields and additionalProperties true $e5
+    Not create a contexts column for a schema with no fields and additionalProperties false $e6
+    Create a contexts column for a schema with no fields and additionalProperties true $e7
   """
 
   /* Abstract definitions */
@@ -55,9 +62,10 @@ abstract class AbstractSparkSpec extends Specification with CatsEffect {
 
   def e1 = Files[IO].tempDirectory.use { tmpDir =>
     val resources = for {
-      inputs <- Resource.eval(generateEvents.take(2).compile.toList)
-      env <- TestSparkEnvironment.build(target, tmpDir, List(inputs.map(_._1)))
-    } yield (inputs.map(_._2), env)
+      inputs <- Resource.eval(inputEvents(2, good()))
+      tokened <- Resource.eval(inputs.traverse(_.tokened))
+      env <- TestSparkEnvironment.build(target, tmpDir, List(tokened))
+    } yield (inputs, env)
 
     val result = resources.use { case (inputEvents, env) =>
       Processing
@@ -73,7 +81,7 @@ abstract class AbstractSparkSpec extends Specification with CatsEffect {
           import spark.implicits._
           val cols = df.columns.toSeq
 
-          val inputEventIds  = inputEvents.flatten.map(_.event_id.toString)
+          val inputEventIds  = inputEvents.flatMap(_.value).map(_.event_id.toString)
           val outputEventIds = df.select("event_id").as[String].collect().toSeq
           val loadTstamps    = df.select("load_tstamp").as[java.sql.Timestamp].collect().toSeq
           val trTotals       = df.select("tr_total").as[BigDecimal].collect().toSeq
@@ -81,7 +89,6 @@ abstract class AbstractSparkSpec extends Specification with CatsEffect {
           List[MatchResult[Any]](
             cols must contain("event_id"),
             cols must contain("load_tstamp"),
-            cols must contain("unstruct_event_myvendor_goodschema_7"),
             df.count() must beEqualTo(4L),
             outputEventIds must containTheSameElementsAs(inputEventIds),
             loadTstamps.toSet must haveSize(1), // single timestamp for entire window
@@ -94,89 +101,320 @@ abstract class AbstractSparkSpec extends Specification with CatsEffect {
   }
 
   def e2 = Files[IO].tempDirectory.use { tmpDir =>
-    val resources = for {
-      inputs <- Resource.eval(generateEventsBadEvolution.take(2).compile.toList)
-      env <- TestSparkEnvironment.build(target, tmpDir, List(inputs.map(_._1)))
-    } yield (inputs.map(_._2), env)
+    val ueGood700 = SnowplowEvent.UnstructEvent(
+      Some(
+        SelfDescribingData(
+          SchemaKey("myvendor", "goodschema", "jsonschema", SchemaVer.Full(7, 0, 0)),
+          Json.obj(
+            "col_a" -> Json.fromString("xyz")
+          )
+        )
+      )
+    )
 
-    val result = resources.use { case (inputEvents, env) =>
+    val ueGood701 = SnowplowEvent.UnstructEvent(
+      Some(
+        SelfDescribingData(
+          SchemaKey("myvendor", "goodschema", "jsonschema", SchemaVer.Full(7, 0, 1)),
+          Json.obj(
+            "col_a" -> Json.fromString("xyz"),
+            "col_b" -> Json.fromString("abc")
+          )
+        )
+      )
+    )
+
+    val resources = for {
+      inputs1 <- Resource.eval(inputEvents(2, good(ue = ueGood700)))
+      tokened1 <- Resource.eval(inputs1.traverse(_.tokened))
+      inputs2 <- Resource.eval(inputEvents(2, good(ue = ueGood701)))
+      tokened2 <- Resource.eval(inputs2.traverse(_.tokened))
+      env <- TestSparkEnvironment.build(target, tmpDir, List(tokened1, tokened2))
+    } yield env
+
+    val io = resources.use { env =>
       Processing
         .stream(env)
         .compile
         .drain
-        .as(inputEvents)
     }
 
-    result.flatMap { inputEvents =>
+    io *> {
       sparkForAssertions(sparkConfig(tmpDir)).use { spark =>
         IO.blocking(readTable(spark, tmpDir)).map { df =>
           import spark.implicits._
-          val cols = df.columns.toSeq
-
-          val inputEventIds  = inputEvents.flatten.map(_.event_id.toString)
-          val outputEventIds = df.select("event_id").as[String].collect().toSeq
-          val loadTstamps    = df.select("load_tstamp").as[java.sql.Timestamp].collect().toSeq
+          val cols    = df.columns.toSeq
+          val fieldAs = df.select("unstruct_event_myvendor_goodschema_7.col_a").as[String].collect().toSeq
+          val fieldBs = df.select("unstruct_event_myvendor_goodschema_7.col_b").as[String].collect().toSeq
 
           List[MatchResult[Any]](
-            cols must contain("event_id"),
-            cols must contain("load_tstamp"),
-            cols must contain("unstruct_event_myvendor_badevolution_1"),
-            cols must contain("unstruct_event_myvendor_badevolution_1_recovered_1_0_1_37fd804e"),
-            df.count() must beEqualTo(4L),
-            outputEventIds must containTheSameElementsAs(inputEventIds),
-            loadTstamps.toSet must haveSize(1), // single timestamp for entire window
-            loadTstamps.head must not beNull
+            cols must contain("unstruct_event_myvendor_goodschema_7"),
+            fieldAs must contain("xyz"),
+            fieldBs must contain("abc"),
+            df.count() must beEqualTo(8L)
           ).reduce(_ and _)
         }
       }
     }
   }
+
+  def e3 = Files[IO].tempDirectory.use { tmpDir =>
+    val ueBadEvolution100 = SnowplowEvent.UnstructEvent(
+      Some(
+        SelfDescribingData(
+          SchemaKey("myvendor", "badevolution", "jsonschema", SchemaVer.Full(1, 0, 0)),
+          Json.obj(
+            "col_a" -> Json.fromString("xyz")
+          )
+        )
+      )
+    )
+
+    val ueBadEvolution101 = SnowplowEvent.UnstructEvent(
+      Some(
+        SelfDescribingData(
+          SchemaKey("myvendor", "badevolution", "jsonschema", SchemaVer.Full(1, 0, 1)),
+          Json.obj(
+            "col_a" -> Json.fromInt(123)
+          )
+        )
+      )
+    )
+
+    val resources = for {
+      inputs1 <- Resource.eval(inputEvents(2, good(ue = ueBadEvolution100)))
+      tokened1 <- Resource.eval(inputs1.traverse(_.tokened))
+      inputs2 <- Resource.eval(inputEvents(2, good(ue = ueBadEvolution101)))
+      tokened2 <- Resource.eval(inputs2.traverse(_.tokened))
+      env <- TestSparkEnvironment.build(target, tmpDir, List(tokened1, tokened2))
+    } yield env
+
+    val io = resources.use { env =>
+      Processing
+        .stream(env)
+        .compile
+        .drain
+    }
+
+    io *> {
+      sparkForAssertions(sparkConfig(tmpDir)).use { spark =>
+        IO.blocking(readTable(spark, tmpDir)).map { df =>
+          import spark.implicits._
+          val cols    = df.columns.toSeq
+          val fieldAs = df.select("unstruct_event_myvendor_badevolution_1.col_a").as[String].collect().toSeq
+          val recoveredAs =
+            df.select("unstruct_event_myvendor_badevolution_1_recovered_1_0_1_37fd804e.col_a").as[Option[Long]].collect().toSeq
+
+          List[MatchResult[Any]](
+            cols must contain("unstruct_event_myvendor_badevolution_1"),
+            cols must contain("unstruct_event_myvendor_badevolution_1_recovered_1_0_1_37fd804e"),
+            fieldAs must contain("xyz"),
+            recoveredAs must contain(Some(123L)),
+            df.count() must beEqualTo(8L)
+          ).reduce(_ and _)
+        }
+      }
+    }
+  }
+
+  def e4 = Files[IO].tempDirectory.use { tmpDir =>
+    val adBreakEndEvent = SnowplowEvent.UnstructEvent(
+      Some(
+        SelfDescribingData(
+          SchemaKey("com.snowplowanalytics.snowplow.media", "ad_break_end_event", "jsonschema", SchemaVer.Full(1, 0, 0)),
+          Json.obj()
+        )
+      )
+    )
+
+    val resources = for {
+      inputs <- Resource.eval(inputEvents(2, good(ue = adBreakEndEvent)))
+      tokened <- Resource.eval(inputs.traverse(_.tokened))
+      env <- TestSparkEnvironment.build(target, tmpDir, List(tokened))
+    } yield env
+
+    val io = resources.use { env =>
+      Processing
+        .stream(env)
+        .compile
+        .drain
+    }
+
+    io *> {
+      sparkForAssertions(sparkConfig(tmpDir)).use { spark =>
+        IO.blocking(readTable(spark, tmpDir)).map { df =>
+          val cols = df.columns.toSeq
+
+          List[MatchResult[Any]](
+            cols must not contain (beMatching("unstruct_event_.*".r)),
+            df.count() must beEqualTo(4L)
+          ).reduce(_ and _)
+        }
+      }
+    }
+  }
+
+  def e5 = Files[IO].tempDirectory.use { tmpDir =>
+    val ue = SnowplowEvent.UnstructEvent(
+      Some(
+        SelfDescribingData(
+          SchemaKey("myvendor", "no-fields", "jsonschema", SchemaVer.Full(1, 0, 0)),
+          Json.obj(
+            "a" -> Json.fromString("xyz"),
+            "b" -> Json.fromString("abc")
+          )
+        )
+      )
+    )
+
+    val resources = for {
+      inputs <- Resource.eval(inputEvents(2, good(ue = ue)))
+      tokened <- Resource.eval(inputs.traverse(_.tokened))
+      env <- TestSparkEnvironment.build(target, tmpDir, List(tokened))
+    } yield env
+
+    val io = resources.use { env =>
+      Processing
+        .stream(env)
+        .compile
+        .drain
+    }
+
+    io *> {
+      sparkForAssertions(sparkConfig(tmpDir)).use { spark =>
+        IO.blocking(readTable(spark, tmpDir)).map { df =>
+          import spark.implicits._
+          val cols = df.columns.toSeq
+          val ues  = df.select("unstruct_event_myvendor_no_fields_1").as[String].collect().toSeq
+
+          List[MatchResult[Any]](
+            cols must contain("unstruct_event_myvendor_no_fields_1"),
+            ues must contain("""{"a":"xyz","b":"abc"}"""),
+            df.count() must beEqualTo(4L)
+          ).reduce(_ and _)
+        }
+      }
+    }
+  }
+
+  def e6 = Files[IO].tempDirectory.use { tmpDir =>
+    val adBreakEndEvent = SnowplowEvent.Contexts(
+      List(
+        SelfDescribingData(
+          SchemaKey("com.snowplowanalytics.snowplow.media", "ad_break_end_event", "jsonschema", SchemaVer.Full(1, 0, 0)),
+          Json.obj()
+        )
+      )
+    )
+
+    val resources = for {
+      inputs <- Resource.eval(inputEvents(2, good(contexts = adBreakEndEvent)))
+      tokened <- Resource.eval(inputs.traverse(_.tokened))
+      env <- TestSparkEnvironment.build(target, tmpDir, List(tokened))
+    } yield env
+
+    val io = resources.use { env =>
+      Processing
+        .stream(env)
+        .compile
+        .drain
+    }
+
+    io *> {
+      sparkForAssertions(sparkConfig(tmpDir)).use { spark =>
+        IO.blocking(readTable(spark, tmpDir)).map { df =>
+          val cols = df.columns.toSeq
+
+          List[MatchResult[Any]](
+            cols must not contain (beMatching("contexts_.*".r)),
+            df.count() must beEqualTo(4L)
+          ).reduce(_ and _)
+        }
+      }
+    }
+  }
+
+  def e7 = Files[IO].tempDirectory.use { tmpDir =>
+    val contexts = SnowplowEvent.Contexts(
+      List(
+        SelfDescribingData(
+          SchemaKey("myvendor", "no-fields", "jsonschema", SchemaVer.Full(1, 0, 0)),
+          Json.obj(
+            "a" -> Json.fromString("xyz"),
+            "b" -> Json.fromString("abc")
+          )
+        )
+      )
+    )
+
+    val resources = for {
+      inputs <- Resource.eval(inputEvents(2, good(contexts = contexts)))
+      tokened <- Resource.eval(inputs.traverse(_.tokened))
+      env <- TestSparkEnvironment.build(target, tmpDir, List(tokened))
+    } yield env
+
+    val io = resources.use { env =>
+      Processing
+        .stream(env)
+        .compile
+        .drain
+    }
+
+    io *> {
+      sparkForAssertions(sparkConfig(tmpDir)).use { spark =>
+        IO.blocking(readTable(spark, tmpDir)).map { df =>
+          import spark.implicits._
+          val cols = df.columns.toSeq
+          val vs   = df.select("contexts_myvendor_no_fields_1").as[Option[List[String]]].collect().toSeq
+
+          List[MatchResult[Any]](
+            cols must contain("contexts_myvendor_no_fields_1"),
+            vs must contain(Some(List("""{"a":"xyz","b":"abc","_schema_version":"1-0-0"}"""))),
+            df.count() must beEqualTo(4L)
+          ).reduce(_ and _)
+        }
+      }
+    }
+  }
+
 }
 
 object AbstractSparkSpec {
 
-  private def generateEvents: Stream[IO, (TokenedEvents, List[Event])] =
-    Stream.eval {
-      for {
-        ack <- IO.unique
-        eventId1 <- IO.randomUUID
-        eventId2 <- IO.randomUUID
-        collectorTstamp <- IO.realTimeInstant
-      } yield {
-        val event1 = Event
-          .minimal(eventId1, collectorTstamp, "0.0.0", "0.0.0")
-          .copy(tr_total = Some(1.23))
-          .copy(unstruct_event = ueGood700)
-        val event2 = Event
-          .minimal(eventId2, collectorTstamp, "0.0.0", "0.0.0")
-          .copy(unstruct_event = ueGood701)
-        val serialized = Chunk(event1, event2).map { e =>
-          StandardCharsets.UTF_8.encode(e.toTsv)
-        }
-        (TokenedEvents(serialized, ack, None), List(event1, event2))
+  case class TestBatch(value: List[Event]) {
+    def tokened: IO[TokenedEvents] = {
+      val serialized = Chunk.from(value).map { e =>
+        StandardCharsets.UTF_8.encode(e.toTsv)
       }
-    }.repeat
+      IO.unique.map { ack =>
+        TokenedEvents(serialized, ack, None)
+      }
+    }
+  }
 
-  private def generateEventsBadEvolution: Stream[IO, (TokenedEvents, List[Event])] =
-    Stream.eval {
-      for {
-        ack <- IO.unique
-        eventId1 <- IO.randomUUID
-        eventId2 <- IO.randomUUID
-        collectorTstamp <- IO.realTimeInstant
-      } yield {
-        val event1 = Event
-          .minimal(eventId1, collectorTstamp, "0.0.0", "0.0.0")
-          .copy(unstruct_event = ueBadEvolution100)
-        val event2 = Event
-          .minimal(eventId2, collectorTstamp, "0.0.0", "0.0.0")
-          .copy(unstruct_event = ueBadEvolution101)
-        val serialized = Chunk(event1, event2).map { e =>
-          StandardCharsets.UTF_8.encode(e.toTsv)
-        }
-        (TokenedEvents(serialized, ack, None), List(event1, event2))
-      }
-    }.repeat
+  def inputEvents(count: Long, source: IO[TestBatch]): IO[List[TestBatch]] =
+    Stream
+      .eval(source)
+      .repeat
+      .take(count)
+      .compile
+      .toList
+
+  def good(ue: UnstructEvent = UnstructEvent(None), contexts: Contexts = Contexts(List.empty)): IO[TestBatch] =
+    for {
+      eventId1 <- IO.randomUUID
+      eventId2 <- IO.randomUUID
+      collectorTstamp <- IO.realTimeInstant
+    } yield {
+      val event1 = Event
+        .minimal(eventId1, collectorTstamp, "0.0.0", "0.0.0")
+        .copy(tr_total = Some(1.23))
+        .copy(unstruct_event = ue)
+        .copy(contexts = contexts)
+      val event2 = Event
+        .minimal(eventId2, collectorTstamp, "0.0.0", "0.0.0")
+      TestBatch(List(event1, event2))
+    }
 
   /** A spark session just used for making assertions, not for running the code under test */
   private def sparkForAssertions(config: Map[String, String]): Resource[IO, SparkSession] = {
@@ -190,52 +428,5 @@ object AbstractSparkSpec {
     }
     Resource.make(io)(s => IO.blocking(s.close()))
   }
-
-  /** Some unstructured events * */
-
-  private val ueGood700 = SnowplowEvent.UnstructEvent(
-    Some(
-      SelfDescribingData(
-        SchemaKey("myvendor", "goodschema", "jsonschema", SchemaVer.Full(7, 0, 0)),
-        Json.obj(
-          "col_a" -> Json.fromString("xyz")
-        )
-      )
-    )
-  )
-
-  private val ueGood701 = SnowplowEvent.UnstructEvent(
-    Some(
-      SelfDescribingData(
-        SchemaKey("myvendor", "goodschema", "jsonschema", SchemaVer.Full(7, 0, 1)),
-        Json.obj(
-          "col_a" -> Json.fromString("xyz"),
-          "col_b" -> Json.fromString("abc")
-        )
-      )
-    )
-  )
-
-  private val ueBadEvolution100 = SnowplowEvent.UnstructEvent(
-    Some(
-      SelfDescribingData(
-        SchemaKey("myvendor", "badevolution", "jsonschema", SchemaVer.Full(1, 0, 0)),
-        Json.obj(
-          "col_a" -> Json.fromString("xyz")
-        )
-      )
-    )
-  )
-
-  private val ueBadEvolution101 = SnowplowEvent.UnstructEvent(
-    Some(
-      SelfDescribingData(
-        SchemaKey("myvendor", "badevolution", "jsonschema", SchemaVer.Full(1, 0, 1)),
-        Json.obj(
-          "col_a" -> Json.fromInt(123)
-        )
-      )
-    )
-  )
 
 }
