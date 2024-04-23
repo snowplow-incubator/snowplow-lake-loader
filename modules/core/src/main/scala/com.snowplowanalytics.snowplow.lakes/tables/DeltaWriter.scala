@@ -100,11 +100,11 @@ class DeltaWriter(config: Config.Delta) extends Writer {
    *   The Delta config, whose `dataSkippingColumn` param tells us which columns must go first in
    *   the table definition. See Delta's data skipping feature to understand why.
    */
-  private def fieldsForCreate(config: Config.Delta): List[StructField] = {
+  private def fieldsForCreate(config: Config.Delta): Iterable[StructField] = {
     val (withStats, noStats) = AtomicFields.withLoadTstamp.partition { f =>
       config.dataSkippingColumns.contains(f.name)
     }
-    (withStats ::: noStats).map(SparkSchema.asSparkField)
+    (withStats ++ noStats).map(SparkSchema.asSparkField)
   }
 
 }

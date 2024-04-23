@@ -13,15 +13,15 @@ object Dependencies {
 
   object V {
     // Scala
-    val catsEffect       = "3.5.0"
-    val catsRetry        = "3.1.0"
+    val catsEffect       = "3.5.4"
+    val catsRetry        = "3.1.3"
     val decline          = "2.4.1"
-    val circe            = "0.14.1"
-    val http4s           = "0.23.15"
+    val circe            = "0.14.3"
+    val http4s           = "0.23.16"
     val betterMonadicFor = "0.3.1"
 
     // Spark
-    val spark          = "3.4.1"
+    val spark          = "3.4.3"
     val delta          = "2.4.0"
     val hudi           = "0.14.0"
     val iceberg        = "1.3.1"
@@ -32,14 +32,14 @@ object Dependencies {
 
     // java
     val slf4j       = "2.0.7"
-    val azureSdk    = "1.11.1"
+    val azureSdk    = "1.11.4"
     val sentry      = "6.25.2"
     val awsSdk1     = "1.12.646"
-    val awsSdk2     = "2.20.43" // Match common-streams
+    val awsSdk2     = "2.25.16" // Match common-streams
     val awsRegistry = "1.1.19"
 
     // Snowplow
-    val streams    = "0.5.0"
+    val streams    = "0.6.0-M1"
     val igluClient = "3.0.0"
 
     // Transitive overrides

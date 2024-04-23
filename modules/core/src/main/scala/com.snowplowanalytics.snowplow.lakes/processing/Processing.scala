@@ -166,7 +166,7 @@ object Processing {
   private def rememberDataFrame[F[_]](ref: Ref[F, WindowState], dfOnDisk: DataFrameOnDisk): F[Unit] =
     ref.update(state => state.copy(framesOnDisk = dfOnDisk :: state.framesOnDisk))
 
-  private def rememberColumnNames[F[_]](ref: Ref[F, WindowState], fields: List[TypedTabledEntity]): F[Unit] = {
+  private def rememberColumnNames[F[_]](ref: Ref[F, WindowState], fields: Vector[TypedTabledEntity]): F[Unit] = {
     val colNames = fields.flatMap { typedTabledEntity =>
       typedTabledEntity.mergedField.name :: typedTabledEntity.recoveries.map(_._2.name)
     }.toSet
