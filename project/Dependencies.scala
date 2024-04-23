@@ -13,15 +13,15 @@ object Dependencies {
 
   object V {
     // Scala
-    val catsEffect       = "3.5.0"
-    val catsRetry        = "3.1.0"
+    val catsEffect       = "3.5.4"
+    val catsRetry        = "3.1.3"
     val decline          = "2.4.1"
-    val circe            = "0.14.1"
-    val http4s           = "0.23.15"
+    val circe            = "0.14.3"
+    val http4s           = "0.23.16"
     val betterMonadicFor = "0.3.1"
 
     // Spark
-    val spark          = "3.4.1"
+    val spark          = "3.4.3"
     val delta          = "2.4.0"
     val hudi           = "0.14.0"
     val iceberg        = "1.3.1"
@@ -31,14 +31,14 @@ object Dependencies {
     val hive           = "3.1.3"
 
     // java
-    val slf4j    = "2.0.7"
-    val azureSdk = "1.11.1"
+    val slf4j    = "2.0.13"
+    val azureSdk = "1.11.4"
     val sentry   = "6.25.2"
     val awsSdk1  = "1.12.646"
-    val awsSdk2  = "2.20.43" // Match common-streams
+    val awsSdk2  = "2.25.16" // Match common-streams
 
     // Snowplow
-    val streams    = "0.5.0"
+    val streams    = "0.6.0"
     val igluClient = "3.0.0"
 
     // Transitive overrides
@@ -46,6 +46,12 @@ object Dependencies {
     val snappy   = "1.1.10.5"
     val thrift   = "0.18.1"
     val netty    = "4.1.104.Final"
+
+    /**
+     * The Lake Loader currently does not work with pubsub SDK versions later than 1.125.10. It
+     * appears to be an incompatibility in transitive dependencies, (e.g. grpc).
+     */
+    val pubsubSdk = "1.125.10"
 
     // tests
     val specs2           = "4.20.0"
@@ -87,7 +93,9 @@ object Dependencies {
   val thrift     = "org.apache.thrift"   % "libthrift"                          % V.thrift
   val netty      = "io.netty"            % "netty-all"                          % V.netty
   val awsBundle  = "com.amazonaws"       % "aws-java-sdk-bundle"                % V.awsSdk1
+  val pubsubSdk  = "com.google.cloud"    % "google-cloud-pubsub"                % V.pubsubSdk
 
+  // snowplow
   val streamsCore      = "com.snowplowanalytics" %% "streams-core"             % V.streams
   val kinesis          = "com.snowplowanalytics" %% "kinesis"                  % V.streams
   val kafka            = "com.snowplowanalytics" %% "kafka"                    % V.streams
@@ -146,7 +154,8 @@ object Dependencies {
   ) ++ commonRuntimeDependencies
 
   val gcpDependencies = Seq(
-    pubsub,
+    pubsub.exclude("com.google.cloud", "google-cloud-pubsub"),
+    pubsubSdk, // replace pubsub sdk with an earlier version
     gcsConnector
   ) ++ commonRuntimeDependencies
 

@@ -20,6 +20,9 @@ import sbtdynver.DynVerPlugin.autoImport._
 import com.typesafe.sbt.packager.docker.DockerPlugin.autoImport._
 import de.heikoseeberger.sbtheader.HeaderPlugin.autoImport._
 
+// Iglu plugin
+import com.snowplowanalytics.snowplow.sbt.IgluSchemaPlugin.autoImport._
+
 import scala.sys.process._
 
 object BuildSettings {
@@ -99,6 +102,13 @@ object BuildSettings {
       }
     },
     Compile / compile := ((Compile / compile) dependsOn downloadUnmanagedJars).value
+  )
+
+  val igluTestSettings = Seq(
+    Test / igluUris := Seq(
+      // Iglu Central schemas used in tests will get pre-fetched by sbt
+      "iglu:com.snowplowanalytics.snowplow.media/ad_break_end_event/jsonschema/1-0-0"
+    )
   )
 
 }

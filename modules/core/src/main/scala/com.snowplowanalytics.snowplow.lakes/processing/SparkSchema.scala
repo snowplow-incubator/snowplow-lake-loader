@@ -22,11 +22,11 @@ object SparkSchema {
    *
    * The returned schema includes atomic fields and non-atomic fields but not the load_tstamp column
    */
-  private[processing] def forBatch(entities: List[TypedTabledEntity]): StructType = {
+  private[processing] def forBatch(entities: Vector[TypedTabledEntity]): StructType = {
     val nonAtomicFields = entities.flatMap { tte =>
       tte.mergedField :: tte.recoveries.map(_._2)
     }
-    StructType(atomic ::: nonAtomicFields.map(asSparkField))
+    StructType(atomic ++ nonAtomicFields.map(asSparkField))
   }
 
   /**
@@ -37,7 +37,7 @@ object SparkSchema {
    * @note
    *   this is a `val` not a `def` because we use it over and over again.
    */
-  val atomic: List[StructField] = AtomicFields.static.map(asSparkField)
+  val atomic: Vector[StructField] = AtomicFields.static.map(asSparkField)
 
   /** String representation of the atomic schema for creating a table using SQL dialiect */
   def ddlForCreate: String =
@@ -58,7 +58,7 @@ object SparkSchema {
     case Type.Decimal(precision, scale)     => DecimalType(Type.DecimalPrecision.toInt(precision), scale)
     case Type.Date                          => DateType
     case Type.Timestamp                     => TimestampType
-    case Type.Struct(fields)                => StructType(fields.map(asSparkField))
+    case Type.Struct(fields)                => StructType(fields.toVector.map(asSparkField))
     case Type.Array(element, elNullability) => ArrayType(fieldType(element), elNullability.nullable)
     case Type.Json                          => StringType // Spark does not support the `Json` parquet logical type.
   }

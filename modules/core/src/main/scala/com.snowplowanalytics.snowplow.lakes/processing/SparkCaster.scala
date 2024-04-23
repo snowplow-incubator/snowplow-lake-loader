@@ -10,6 +10,7 @@
 
 package com.snowplowanalytics.snowplow.lakes.processing
 
+import cats.data.NonEmptyVector
 import io.circe.Json
 
 import org.apache.spark.sql.Row
@@ -30,11 +31,11 @@ private[processing] object SparkCaster extends Caster[Any] {
   override def doubleValue(v: Double): Double    = v
   override def decimalValue(unscaled: BigInt, details: Type.Decimal): BigDecimal =
     BigDecimal(unscaled, details.scale)
-  override def timestampValue(v: Instant): Instant                = v
-  override def dateValue(v: LocalDate): LocalDate                 = v
-  override def arrayValue(vs: List[Any]): List[Any]               = vs
-  override def structValue(vs: List[Caster.NamedValue[Any]]): Row = row(vs)
+  override def timestampValue(v: Instant): Instant                          = v
+  override def dateValue(v: LocalDate): LocalDate                           = v
+  override def arrayValue(vs: Vector[Any]): Vector[Any]                     = vs
+  override def structValue(vs: NonEmptyVector[Caster.NamedValue[Any]]): Row = row(vs.toVector)
 
-  def row(vs: Seq[Caster.NamedValue[Any]]): Row = Row.fromSeq(vs.map(_.value))
+  def row(vs: Vector[Caster.NamedValue[Any]]): Row = Row.fromSeq(vs.map(_.value))
 
 }

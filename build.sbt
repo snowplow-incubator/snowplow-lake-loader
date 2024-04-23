@@ -26,6 +26,7 @@ lazy val root = project
 lazy val core: Project = project
   .in(file("modules/core"))
   .settings(BuildSettings.commonSettings)
+  .settings(BuildSettings.igluTestSettings)
   .settings(libraryDependencies ++= Dependencies.coreDependencies)
 
 lazy val azure: Project = project
@@ -54,6 +55,7 @@ lazy val aws: Project = project
 lazy val hudi: Project = project
   .in(file("packaging/hudi"))
   .settings(BuildSettings.commonSettings)
+  .settings(BuildSettings.igluTestSettings)
   .settings(libraryDependencies ++= Dependencies.hudiDependencies)
   .dependsOn(core % "test->test")
 
