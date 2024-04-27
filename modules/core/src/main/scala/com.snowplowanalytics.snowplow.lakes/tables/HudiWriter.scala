@@ -48,6 +48,16 @@ class HudiWriter(config: Config.Hudi) extends Writer {
           LOCATION '${config.location}'
           TBLPROPERTIES($tableProps)
         """)
+
+        // We call clean/archive during startup because it also triggers rollback of any previously
+        // failed commits. We want to do the rollbacks before early, so that we are immediately
+        // healthy once we start consuming events.
+        spark.sql(s"""
+          CALL run_clean(table => '$internal_table_name')
+        """)
+        spark.sql(s"""
+          CALL archive_commits(table => '$internal_table_name')
+        """)
       }.void
   }
 
