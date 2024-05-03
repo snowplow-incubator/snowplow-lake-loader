@@ -56,7 +56,10 @@ object BuildSettings {
       )
     ),
     headerMappings := headerMappings.value + (HeaderFileType.conf -> HeaderCommentStyle.hashLineComment),
-    excludeDependencies ++= Dependencies.commonExclusions
+    excludeDependencies ++= Dependencies.commonExclusions,
+
+    // TODO: Remove after Delta 3.2.0 is released
+    resolvers += "Delta" at "https://oss.sonatype.org/content/repositories/iodelta-1138"
   )
 
   lazy val appSettings = Seq(
