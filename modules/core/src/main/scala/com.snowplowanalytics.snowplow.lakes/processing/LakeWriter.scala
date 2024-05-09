@@ -45,7 +45,8 @@ object LakeWriter {
     for {
       session <- SparkUtils.session[F](config, w)
       isHealthy <- Resource.eval(Ref[F].of(initialHealthStatus))
-    } yield (impl(session, w, isHealthy), isHealthy.get)
+      writerParallelism = chooseWriterParallelism(config)
+    } yield (impl(session, w, isHealthy, writerParallelism), isHealthy.get)
   }
 
   private def initialHealthStatus: HealthProbe.Status =
@@ -54,7 +55,8 @@ object LakeWriter {
   private def impl[F[_]: Async](
     spark: SparkSession,
     w: Writer,
-    isHealthy: Ref[F, HealthProbe.Status]
+    isHealthy: Ref[F, HealthProbe.Status],
+    writerParallelism: Int
   ): LakeWriter[F] = new LakeWriter[F] {
     def createTable: F[Unit] =
       w.prepareTable(spark) <* isHealthy.set(HealthProbe.Healthy)
@@ -66,6 +68,18 @@ object LakeWriter {
       SparkUtils.dropViews(spark, dataFramesOnDisk)
 
     def commit(dataFramesOnDisk: NonEmptyList[DataFrameOnDisk]): F[Unit] =
-      SparkUtils.commit(spark, w, dataFramesOnDisk)
+      SparkUtils.commit(spark, w, dataFramesOnDisk, writerParallelism)
   }
+
+  /**
+   * Converts `writerParallelismFraction` into a suggested number of threads
+   *
+   * For bigger instances (more cores) we want more parallelism in the writer. This avoids a
+   * situation where writing tasks exceed the length of a window, which causes an unbalanced use of
+   * cpu.
+   */
+  private def chooseWriterParallelism(config: Config.Spark): Int =
+    (Runtime.getRuntime.availableProcessors * config.writerParallelismFraction)
+      .setScale(0, BigDecimal.RoundingMode.UP)
+      .toInt
 }

@@ -88,7 +88,8 @@ object Config {
   case class Spark(
     taskRetries: Int,
     conf: Map[String, String],
-    gcpUserAgent: GcpUserAgent
+    gcpUserAgent: GcpUserAgent,
+    writerParallelismFraction: BigDecimal
   )
 
   case class Metrics(

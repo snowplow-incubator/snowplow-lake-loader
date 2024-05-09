@@ -81,12 +81,13 @@ private[processing] object SparkUtils {
   def commit[F[_]: Sync](
     spark: SparkSession,
     writer: Writer,
-    dataFramesOnDisk: NonEmptyList[DataFrameOnDisk]
+    dataFramesOnDisk: NonEmptyList[DataFrameOnDisk],
+    writerParallelism: Int
   ): F[Unit] = {
     val df = dataFramesOnDisk.toList
       .map(onDisk => spark.table(onDisk.viewName))
       .reduce(_.unionByName(_, allowMissingColumns = true))
-      .coalesce(1)
+      .coalesce(writerParallelism)
       .withColumn("load_tstamp", current_timestamp())
 
     writer.write(df)

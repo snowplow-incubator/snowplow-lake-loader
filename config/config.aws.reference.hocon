@@ -159,6 +159,11 @@
       # -- E.g. to change credentials provider
       "fs.s3a.aws.credentials.provider": "com.amazonaws.auth.InstanceProfileCredentialsProvider"
     }
+
+    # -- Controls how many spark tasks run in parallel during writing the events to cloud storage.
+    # -- E.g. If there are 8 available processors, and cpuParallelismFraction = 0.25, then we have 2 spark tasks for writing.
+    # -- The default value is known to work well. Changing this setting might affect memory usage, file sizes, and/or latency.
+    "writerParallelismFraction": 0.25
   }
 
   # -- Schemas that won't be loaded to the lake.  Optional, default value []
