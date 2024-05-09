@@ -17,7 +17,7 @@ import cats.implicits._
 import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 
-import org.apache.spark.sql.{Row, SparkSession}
+import org.apache.spark.sql.{DataFrame, Row, SparkSession}
 import org.apache.spark.sql.functions.current_timestamp
 import org.apache.spark.sql.types.StructType
 import org.apache.spark.SnowplowOverrideShutdownHook
@@ -25,7 +25,6 @@ import org.apache.spark.SnowplowOverrideShutdownHook
 import com.snowplowanalytics.snowplow.lakes.Config
 import com.snowplowanalytics.snowplow.lakes.tables.Writer
 
-import java.util.UUID
 import scala.jdk.CollectionConverters._
 
 private[processing] object SparkUtils {
@@ -59,44 +58,48 @@ private[processing] object SparkUtils {
     writer.sparkConfig ++ config.conf + (gcpUserAgentKey -> gcpUserAgentValue)
   }
 
-  def saveDataFrameToDisk[F[_]: Sync](
+  def initializeLocalDataFrame[F[_]: Sync](spark: SparkSession, viewName: String): F[Unit] =
+    for {
+      _ <- Logger[F].debug(s"Initializing local DataFrame with name $viewName")
+      _ <- Sync[F].blocking {
+             spark.emptyDataFrame.createTempView(viewName)
+           }
+    } yield ()
+
+  def localAppendRows[F[_]: Sync](
     spark: SparkSession,
+    viewName: String,
     rows: NonEmptyList[Row],
     schema: StructType
-  ): F[DataFrameOnDisk] = {
-    val count = rows.size
+  ): F[Unit] =
     for {
-      viewName <- Sync[F].delay("v" + UUID.randomUUID.toString.replaceAll("-", ""))
-      _ <- Logger[F].debug(s"Saving batch of $count events to local disk")
+      _ <- Logger[F].debug(s"Saving batch of ${rows.size} events to local DataFrame $viewName")
       _ <- Sync[F].blocking {
              spark
                .createDataFrame(rows.toList.asJava, schema)
                .coalesce(1)
                .localCheckpoint()
-               .createTempView(viewName)
+               .unionByName(spark.table(viewName), allowMissingColumns = true)
+               .createOrReplaceTempView(viewName)
            }
-    } yield DataFrameOnDisk(viewName, count)
-  }
+    } yield ()
 
-  def commit[F[_]: Sync](
+  def prepareFinalDataFrame[F[_]: Sync](
     spark: SparkSession,
-    writer: Writer,
-    dataFramesOnDisk: NonEmptyList[DataFrameOnDisk]
-  ): F[Unit] = {
-    val df = dataFramesOnDisk.toList
-      .map(onDisk => spark.table(onDisk.viewName))
-      .reduce(_.unionByName(_, allowMissingColumns = true))
-      .coalesce(1)
-      .withColumn("load_tstamp", current_timestamp())
+    viewName: String,
+    writerParallelism: Int
+  ): F[DataFrame] =
+    Sync[F].blocking {
+      spark
+        .table(viewName)
+        .withColumn("load_tstamp", current_timestamp())
+        .coalesce(writerParallelism)
+        .localCheckpoint()
+    }
 
-    writer.write(df)
-  }
-
-  def dropViews[F[_]: Sync](spark: SparkSession, dataFramesOnDisk: List[DataFrameOnDisk]): F[Unit] =
-    Logger[F].info(s"Removing ${dataFramesOnDisk.size} spark data frames from local disk...") >>
+  def dropView[F[_]: Sync](spark: SparkSession, viewName: String): F[Unit] =
+    Logger[F].info(s"Removing Spark data frame $viewName from local disk...") >>
       Sync[F].blocking {
-        dataFramesOnDisk.foreach { onDisk =>
-          spark.catalog.dropTempView(onDisk.viewName)
-        }
-      }
+        spark.catalog.dropTempView(viewName)
+      }.void
 }

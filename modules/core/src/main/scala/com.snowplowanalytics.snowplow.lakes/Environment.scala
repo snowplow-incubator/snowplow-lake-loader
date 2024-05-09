@@ -13,7 +13,6 @@ package com.snowplowanalytics.snowplow.lakes
 import cats.{Functor, Monad}
 import cats.implicits._
 import cats.effect.{Async, Resource, Sync}
-import cats.effect.std.Semaphore
 import cats.effect.unsafe.implicits.global
 import org.http4s.client.Client
 import org.http4s.blaze.client.BlazeClientBuilder
@@ -33,11 +32,6 @@ import com.snowplowanalytics.snowplow.runtime.{AppInfo, HealthProbe}
  *   The processing Pipe involves several steps, some of which are cpu-intensive. We run
  *   cpu-intensive steps in parallel, so that on big instances we can take advantage of all cores.
  *   For each of those cpu-intensive steps, `cpuParallelism` controls the parallelism of that step.
- * @param cpuPermit
- *   A Resource that supplies permits which must be acquired before running a cpu-intensive step of
- *   the Pipe. This is needed to throttle the total number of cpu-intensive steps we are running at
- *   any one time, across all steps. Testing shows this leads to faster commit times, because the
- *   slow cpu-intensive spark job is allowed more exclusive access to the cpu.
  * @param inMemBatchBytes
  *   The processing Pipe batches up Events in memory, and then flushes them to local disk to avoid
  *   running out memory. This param limits the maximum size of a batch. Note, because of how the
@@ -57,7 +51,6 @@ case class Environment[F[_]](
   cpuParallelism: Int,
   inMemBatchBytes: Long,
   windowing: EventProcessingConfig.TimedWindows,
-  cpuPermit: Resource[F, Unit],
   schemasToSkip: List[SchemaCriterion]
 )
 
@@ -74,14 +67,13 @@ object Environment {
       resolver <- mkResolver[F](config.iglu)
       httpClient <- BlazeClientBuilder[F].withExecutionContext(global.compute).resource
       badSink <- toSink(config.main.output.bad)
-      windowing <- Resource.eval(EventProcessingConfig.TimedWindows.build(config.main.windowing))
+      windowing <- Resource.eval(EventProcessingConfig.TimedWindows.build(config.main.windowing, config.main.numEagerWindows))
       (lakeWriter, lakeWriterHealth) <- LakeWriter.build[F](config.main.spark, config.main.output.good)
       sourceAndAck <- Resource.eval(toSource(config.main.input))
       metrics <- Resource.eval(Metrics.build(config.main.monitoring.metrics))
       isHealthy = combineIsHealthy(sourceIsHealthy(config.main.monitoring.healthProbe, sourceAndAck), lakeWriterHealth)
       _ <- HealthProbe.resource(config.main.monitoring.healthProbe.port, isHealthy)
       cpuParallelism = chooseCpuParallelism(config.main)
-      cpuSemaphore <- Resource.eval(Semaphore[F](chooseNumCpuPermits(cpuParallelism)))
     } yield Environment(
       appInfo         = appInfo,
       source          = sourceAndAck,
@@ -93,7 +85,6 @@ object Environment {
       cpuParallelism  = cpuParallelism,
       inMemBatchBytes = config.main.inMemBatchBytes,
       windowing       = windowing,
-      cpuPermit       = cpuSemaphore.permit,
       schemasToSkip   = config.main.skipSchemas
     )
 
@@ -142,15 +133,6 @@ object Environment {
     (Runtime.getRuntime.availableProcessors * config.cpuParallelismFraction)
       .setScale(0, BigDecimal.RoundingMode.UP)
       .toInt
-
-  /**
-   * See the description of `cpuPermit` on the [[Environment]] class
-   *
-   * There must be at least 2 cpu permits, so that the slow spark job (committing to the lake) does
-   * not block the parsing/transformation steps running concurrently.
-   */
-  private def chooseNumCpuPermits(cpuParallelism: Int): Long =
-    Math.max(2L, cpuParallelism.toLong)
 
   private def sourceIsHealthy[F[_]: Functor](config: Config.HealthProbe, source: SourceAndAck[F]): F[HealthProbe.Status] =
     source.isHealthy(config.unhealthyLatency).map {

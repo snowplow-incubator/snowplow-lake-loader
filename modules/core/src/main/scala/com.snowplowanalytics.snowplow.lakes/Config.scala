@@ -31,6 +31,7 @@ case class Config[+Source, +Sink](
   output: Config.Output[Sink],
   inMemBatchBytes: Long,
   cpuParallelismFraction: BigDecimal,
+  numEagerWindows: Int,
   windowing: FiniteDuration,
   spark: Config.Spark,
   telemetry: Telemetry.Config,
@@ -88,7 +89,8 @@ object Config {
   case class Spark(
     taskRetries: Int,
     conf: Map[String, String],
-    gcpUserAgent: GcpUserAgent
+    gcpUserAgent: GcpUserAgent,
+    writerParallelismFraction: BigDecimal
   )
 
   case class Metrics(
