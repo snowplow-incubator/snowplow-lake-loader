@@ -39,7 +39,7 @@ object Dependencies {
     val awsSdk2  = "2.25.16" // Match common-streams
 
     // Snowplow
-    val streams    = "0.6.0"
+    val streams    = "0.7.0-M2"
     val igluClient = "3.0.0"
 
     // Transitive overrides

@@ -24,7 +24,7 @@ import scala.concurrent.duration.{DurationInt, FiniteDuration}
 import com.snowplowanalytics.iglu.client.Resolver
 import com.snowplowanalytics.snowplow.sources.{EventProcessingConfig, EventProcessor, SourceAndAck, TokenedEvents}
 import com.snowplowanalytics.snowplow.sinks.Sink
-import com.snowplowanalytics.snowplow.lakes.processing.{DataFrameOnDisk, LakeWriter}
+import com.snowplowanalytics.snowplow.lakes.processing.LakeWriter
 
 case class MockEnvironment(state: Ref[IO, Vector[MockEnvironment.Action]], environment: Environment[IO])
 
@@ -38,9 +38,10 @@ object MockEnvironment {
     case class Checkpointed(tokens: List[Unique.Token]) extends Action
     case class SentToBad(count: Int) extends Action
     case object CreatedTable extends Action
-    case class SavedDataFrameToDisk(df: DataFrameOnDisk) extends Action
-    case class RemovedDataFramesFromDisk(names: List[String]) extends Action
-    case class CommittedToTheLake(names: List[String]) extends Action
+    case class InitializedLocalDataFrame(viewName: String) extends Action
+    case class AppendedRowsToDataFrame(viewName: String, numEvents: Int) extends Action
+    case class RemovedDataFrameFromDisk(viewName: String) extends Action
+    case class CommittedToTheLake(viewName: String) extends Action
 
     /* Metrics */
     case class AddedReceivedCountMetric(count: Int) extends Action
@@ -63,7 +64,6 @@ object MockEnvironment {
   def build(windows: List[List[TokenedEvents]]): IO[MockEnvironment] =
     for {
       state <- Ref[IO].of(Vector.empty[Action])
-      counter <- Ref[IO].of(0)
     } yield {
       val env = Environment(
         appInfo         = TestSparkEnvironment.appInfo,
@@ -71,33 +71,35 @@ object MockEnvironment {
         badSink         = testSink(state),
         resolver        = Resolver[IO](Nil, None),
         httpClient      = testHttpClient,
-        lakeWriter      = testLakeWriter(state, counter),
+        lakeWriter      = testLakeWriter(state),
         metrics         = testMetrics(state),
         inMemBatchBytes = 1000000L,
         cpuParallelism  = 1,
-        windowing       = EventProcessingConfig.TimedWindows(1.minute, 1.0),
-        cpuPermit       = Resource.unit[IO],
+        windowing       = EventProcessingConfig.TimedWindows(1.minute, 1.0, 1),
         schemasToSkip   = List.empty
       )
       MockEnvironment(state, env)
     }
 
-  private def testLakeWriter(state: Ref[IO, Vector[Action]], counter: Ref[IO, Int]): LakeWriter[IO] = new LakeWriter[IO] {
+  private def testLakeWriter(state: Ref[IO, Vector[Action]]): LakeWriter[IO] = new LakeWriter[IO] {
     def createTable: IO[Unit] =
       state.update(_ :+ CreatedTable)
 
-    def saveDataFrameToDisk(rows: NonEmptyList[Row], schema: StructType): IO[DataFrameOnDisk] =
-      for {
-        next <- counter.getAndUpdate(_ + 1)
-        df = DataFrameOnDisk(s"view-$next", rows.size)
-        _ <- state.update(_ :+ SavedDataFrameToDisk(df))
-      } yield df
+    def initializeLocalDataFrame(viewName: String): IO[Unit] =
+      state.update(_ :+ InitializedLocalDataFrame(viewName))
 
-    def removeDataFramesFromDisk(dataFramesOnDisk: List[DataFrameOnDisk]): IO[Unit] =
-      state.update(_ :+ RemovedDataFramesFromDisk(dataFramesOnDisk.map(_.viewName)))
+    def localAppendRows(
+      viewName: String,
+      rows: NonEmptyList[Row],
+      schema: StructType
+    ): IO[Unit] =
+      state.update(_ :+ AppendedRowsToDataFrame(viewName, rows.size))
 
-    def commit(dataFramesOnDisk: NonEmptyList[DataFrameOnDisk]): IO[Unit] =
-      state.update(_ :+ CommittedToTheLake(dataFramesOnDisk.toList.map(_.viewName)))
+    def removeDataFrameFromDisk(viewName: String): IO[Unit] =
+      state.update(_ :+ RemovedDataFrameFromDisk(viewName))
+
+    def commit(viewName: String): IO[Unit] =
+      state.update(_ :+ CommittedToTheLake(viewName))
   }
 
   private def testSourceAndAck(windows: List[List[TokenedEvents]], state: Ref[IO, Vector[Action]]): SourceAndAck[IO] =
