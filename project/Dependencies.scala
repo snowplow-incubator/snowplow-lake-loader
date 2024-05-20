@@ -147,38 +147,21 @@ object Dependencies {
     slf4j % Test
   ) ++ commonRuntimeDependencies
 
-  val awsDependencies35 = Seq(
+  val awsDependencies = Seq(
     kinesis,
     hadoopAws,
     awsBundle, // Dependency on aws sdk v1 will likely be removed in the next release of hadoop-aws
     awsGlue,
     awsS3,
     awsSts,
-    sparkCore35
+    hadoopClient
   ) ++ commonRuntimeDependencies
 
-  val awsDependencies34 = Seq(
-    kinesis,
-    hadoopAws,
-    awsBundle, // Dependency on aws sdk v1 will likely be removed in the next release of hadoop-aws
-    awsGlue,
-    awsS3,
-    awsSts,
-    sparkCore34
-  ) ++ commonRuntimeDependencies
-
-  val azureDependencies35 = Seq(
+  val azureDependencies = Seq(
     kafka,
     azureIdentity,
     hadoopAzure,
-    sparkCore35
-  ) ++ commonRuntimeDependencies
-
-  val azureDependencies34 = Seq(
-    kafka,
-    azureIdentity,
-    hadoopAzure,
-    sparkCore34
+    hadoopClient
   ) ++ commonRuntimeDependencies
 
   val gcpDependencies = Seq(

@@ -32,7 +32,7 @@ lazy val core: Project = project
 lazy val azure: Project = project
   .in(file("modules/azure"))
   .settings(BuildSettings.azureSettings)
-  .settings(libraryDependencies ++= Dependencies.azureDependencies35 ++ Dependencies.spark35RuntimeDependencies)
+  .settings(libraryDependencies ++= Dependencies.azureDependencies ++ Dependencies.spark35RuntimeDependencies)
   .dependsOn(core)
   .enablePlugins(BuildInfoPlugin, JavaAppPackaging, SnowplowDockerPlugin)
 
@@ -46,7 +46,7 @@ lazy val gcp: Project = project
 lazy val aws: Project = project
   .in(file("modules/aws"))
   .settings(BuildSettings.awsSettings)
-  .settings(libraryDependencies ++= Dependencies.awsDependencies35 ++ Dependencies.spark35RuntimeDependencies)
+  .settings(libraryDependencies ++= Dependencies.awsDependencies ++ Dependencies.spark35RuntimeDependencies)
   .dependsOn(core)
   .enablePlugins(BuildInfoPlugin, JavaAppPackaging, SnowplowDockerPlugin)
 
@@ -76,7 +76,7 @@ lazy val awsHudi: Project = project
   .withId("awsHudi")
   .settings(BuildSettings.awsSettings ++ BuildSettings.hudiAppSettings)
   .settings(target := (hudi / target).value / "aws")
-  .settings(libraryDependencies ++= Dependencies.awsDependencies34)
+  .settings(libraryDependencies ++= Dependencies.awsDependencies)
   .dependsOn(core)
   .enablePlugins(BuildInfoPlugin, JavaAppPackaging, SnowplowDockerPlugin)
   .dependsOn(hudi % "runtime->runtime")
@@ -96,7 +96,7 @@ lazy val azureHudi: Project = project
   .withId("azureHudi")
   .settings(BuildSettings.azureSettings ++ BuildSettings.hudiAppSettings)
   .settings(target := (hudi / target).value / "azure")
-  .settings(libraryDependencies ++= Dependencies.azureDependencies34)
+  .settings(libraryDependencies ++= Dependencies.azureDependencies)
   .dependsOn(core)
   .enablePlugins(BuildInfoPlugin, JavaAppPackaging, SnowplowDockerPlugin)
   .dependsOn(hudi % "runtime->runtime")
