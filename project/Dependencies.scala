@@ -21,11 +21,12 @@ object Dependencies {
     val betterMonadicFor = "0.3.1"
 
     // Spark
-    val spark          = "3.4.3"
-    val delta          = "2.4.0"
+    val spark34        = "3.4.3"
+    val spark35        = "3.5.1"
+    val delta          = "3.2.0"
     val hudi           = "0.14.0"
-    val iceberg        = "1.3.1"
-    val hadoop         = "3.3.6"
+    val iceberg        = "1.5.1"
+    val hadoop         = "3.4.0"
     val gcsConnector   = "hadoop3-2.2.17"
     val biglakeIceberg = "0.1.0"
     val hive           = "3.1.3"
@@ -45,7 +46,7 @@ object Dependencies {
     val protobuf = "3.25.1"
     val snappy   = "1.1.10.5"
     val thrift   = "0.18.1"
-    val netty    = "4.1.104.Final"
+    val netty    = "4.1.109.Final"
 
     /**
      * The Lake Loader currently does not work with pubsub SDK versions later than 1.125.10. It
@@ -66,12 +67,14 @@ object Dependencies {
   val betterMonadicFor  = "com.olegpy"       %% "better-monadic-for"   % V.betterMonadicFor
 
   // spark and hadoop
-  val sparkCore    = "org.apache.spark"           %% "spark-core"                % V.spark
-  val sparkSql     = "org.apache.spark"           %% "spark-sql"                 % V.spark
-  val sparkHive    = "org.apache.spark"           %% "spark-hive"                % V.spark
-  val delta        = "io.delta"                   %% "delta-core"                % V.delta
+  val sparkCore35  = "org.apache.spark"           %% "spark-core"                % V.spark35
+  val sparkSql35   = "org.apache.spark"           %% "spark-sql"                 % V.spark35
+  val sparkCore34  = "org.apache.spark"           %% "spark-core"                % V.spark34
+  val sparkSql34   = "org.apache.spark"           %% "spark-sql"                 % V.spark34
+  val sparkHive34  = "org.apache.spark"           %% "spark-hive"                % V.spark34
+  val delta        = "io.delta"                   %% "delta-spark"               % V.delta
   val hudi         = "org.apache.hudi"            %% "hudi-spark3.4-bundle"      % V.hudi
-  val iceberg      = "org.apache.iceberg"         %% "iceberg-spark-runtime-3.4" % V.iceberg
+  val iceberg      = "org.apache.iceberg"         %% "iceberg-spark-runtime-3.5" % V.iceberg
   val hadoopClient = "org.apache.hadoop"           % "hadoop-client-runtime"     % V.hadoop
   val hadoopAzure  = "org.apache.hadoop"           % "hadoop-azure"              % V.hadoop
   val hadoopAws    = "org.apache.hadoop"           % "hadoop-aws"                % V.hadoop
@@ -110,8 +113,6 @@ object Dependencies {
   val catsEffectSpecs2  = "org.typelevel" %% "cats-effect-testing-specs2" % V.catsEffectSpecs2 % Test
 
   val commonRuntimeDependencies = Seq(
-    delta        % Runtime,
-    iceberg      % Runtime,
     hadoopClient % Runtime,
     slf4j        % Runtime,
     protobuf     % Runtime,
@@ -119,19 +120,27 @@ object Dependencies {
     snappy       % Runtime
   )
 
+  val spark35RuntimeDependencies = Seq(
+    delta       % Runtime,
+    iceberg     % Runtime,
+    sparkCore35 % Runtime,
+    sparkSql35  % Runtime
+  )
+
   val coreDependencies = Seq(
     streamsCore,
     loaders,
     runtime,
     catsRetry,
-    sparkCore,
-    sparkSql,
+    delta       % Provided,
+    sparkCore35 % Provided,
+    sparkSql35  % Provided,
+    iceberg     % Provided,
     igluClientHttp4s,
     blazeClient,
     decline,
     sentry,
     circeGenericExtra,
-    delta,
     specs2,
     catsEffectSpecs2,
     catsEffectTestkit,
@@ -144,13 +153,15 @@ object Dependencies {
     awsBundle, // Dependency on aws sdk v1 will likely be removed in the next release of hadoop-aws
     awsGlue,
     awsS3,
-    awsSts
+    awsSts,
+    hadoopClient
   ) ++ commonRuntimeDependencies
 
   val azureDependencies = Seq(
     kafka,
     azureIdentity,
-    hadoopAzure
+    hadoopAzure,
+    hadoopClient
   ) ++ commonRuntimeDependencies
 
   val gcpDependencies = Seq(
@@ -166,8 +177,10 @@ object Dependencies {
   )
 
   val hudiDependencies = Seq(
-    hudi      % Runtime,
-    sparkHive % Runtime
+    hudi        % Runtime,
+    sparkCore34 % Runtime,
+    sparkSql34  % Runtime,
+    sparkHive34 % Runtime
   )
 
   val commonExclusions = Seq(

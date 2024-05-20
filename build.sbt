@@ -32,21 +32,21 @@ lazy val core: Project = project
 lazy val azure: Project = project
   .in(file("modules/azure"))
   .settings(BuildSettings.azureSettings)
-  .settings(libraryDependencies ++= Dependencies.azureDependencies)
+  .settings(libraryDependencies ++= Dependencies.azureDependencies ++ Dependencies.spark35RuntimeDependencies)
   .dependsOn(core)
   .enablePlugins(BuildInfoPlugin, JavaAppPackaging, SnowplowDockerPlugin)
 
 lazy val gcp: Project = project
   .in(file("modules/gcp"))
   .settings(BuildSettings.gcpSettings)
-  .settings(libraryDependencies ++= Dependencies.gcpDependencies)
+  .settings(libraryDependencies ++= Dependencies.gcpDependencies ++ Dependencies.spark35RuntimeDependencies)
   .dependsOn(core)
   .enablePlugins(BuildInfoPlugin, JavaAppPackaging, SnowplowDockerPlugin)
 
 lazy val aws: Project = project
   .in(file("modules/aws"))
   .settings(BuildSettings.awsSettings)
-  .settings(libraryDependencies ++= Dependencies.awsDependencies)
+  .settings(libraryDependencies ++= Dependencies.awsDependencies ++ Dependencies.spark35RuntimeDependencies)
   .dependsOn(core)
   .enablePlugins(BuildInfoPlugin, JavaAppPackaging, SnowplowDockerPlugin)
 
@@ -71,22 +71,34 @@ lazy val biglake: Project = project
  * with CVE management.
  */
 
-lazy val awsHudi: Project = aws
+lazy val awsHudi: Project = project
+  .in(file("modules/aws"))
   .withId("awsHudi")
+  .settings(BuildSettings.awsSettings ++ BuildSettings.hudiAppSettings)
   .settings(target := (hudi / target).value / "aws")
-  .settings(BuildSettings.hudiAppSettings)
+  .settings(libraryDependencies ++= Dependencies.awsDependencies)
+  .dependsOn(core)
+  .enablePlugins(BuildInfoPlugin, JavaAppPackaging, SnowplowDockerPlugin)
   .dependsOn(hudi % "runtime->runtime")
 
-lazy val gcpHudi: Project = gcp
+lazy val gcpHudi: Project = project
+  .in(file("modules/gcp"))
   .withId("gcpHudi")
+  .settings(BuildSettings.gcpSettings ++ BuildSettings.hudiAppSettings)
   .settings(target := (hudi / target).value / "gcp")
-  .settings(BuildSettings.hudiAppSettings)
+  .settings(libraryDependencies ++= Dependencies.gcpDependencies)
+  .dependsOn(core)
+  .enablePlugins(BuildInfoPlugin, JavaAppPackaging, SnowplowDockerPlugin)
   .dependsOn(hudi % "runtime->runtime")
 
-lazy val azureHudi: Project = azure
+lazy val azureHudi: Project = project
+  .in(file("modules/azure"))
   .withId("azureHudi")
+  .settings(BuildSettings.azureSettings ++ BuildSettings.hudiAppSettings)
   .settings(target := (hudi / target).value / "azure")
-  .settings(BuildSettings.hudiAppSettings)
+  .settings(libraryDependencies ++= Dependencies.azureDependencies)
+  .dependsOn(core)
+  .enablePlugins(BuildInfoPlugin, JavaAppPackaging, SnowplowDockerPlugin)
   .dependsOn(hudi % "runtime->runtime")
 
 lazy val gcpBiglake: Project = gcp
