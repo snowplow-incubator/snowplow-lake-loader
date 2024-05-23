@@ -23,7 +23,7 @@ import org.apache.spark.sql.types.StructType
 
 import java.nio.charset.StandardCharsets
 import java.nio.ByteBuffer
-import scala.concurrent.duration.{DurationLong, FiniteDuration}
+import scala.concurrent.duration.DurationLong
 
 import com.snowplowanalytics.iglu.client.resolver.registries.{Http4sRegistryLookup, RegistryLookup}
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
@@ -70,17 +70,16 @@ object Processing {
     env: Environment[F]
   ): EventProcessor[F] = { in =>
     val resources = for {
-      now <- Stream.eval(Sync[F].realTime)
       windowState <- Stream.eval(WindowState.build[F])
       stateRef <- Stream.eval(Ref[F].of(windowState))
       _ <- manageDataFrame(env, windowState.viewName)
-    } yield (stateRef, now)
+    } yield stateRef
 
     val badProcessor = BadRowProcessor(env.appInfo.name, env.appInfo.version)
 
-    resources.flatMap { case (stateRef, realTimeWindowStarted) =>
+    resources.flatMap { stateRef =>
       in.through(processBatches(env, badProcessor, stateRef))
-        .append(finalizeWindow(env, stateRef, realTimeWindowStarted))
+        .append(finalizeWindow(env, stateRef))
     }
   }
 
@@ -231,8 +230,7 @@ object Processing {
 
   private def finalizeWindow[F[_]: Sync](
     env: Environment[F],
-    ref: Ref[F, WindowState],
-    realTimeWindowStarted: FiniteDuration
+    ref: Ref[F, WindowState]
   ): Stream[F, Unique.Token] =
     Stream.eval(ref.get).flatMap { state =>
       val commit = if (state.numEvents > 0) {
@@ -243,7 +241,7 @@ object Processing {
           now <- Sync[F].realTime
           _ <- Logger[F].info(s"Window ${state.viewName} finished writing and committing ${state.numEvents} events to the lake.")
           _ <- env.metrics.addCommitted(state.numEvents)
-          _ <- env.metrics.setProcessingLatency(now - realTimeWindowStarted)
+          _ <- env.metrics.setProcessingLatency(now - state.startTime.toEpochMilli.millis)
         } yield ()
       } else
         Logger[F].info(s"Window ${state.viewName} yielded zero good events.  Nothing will be written into the lake.")

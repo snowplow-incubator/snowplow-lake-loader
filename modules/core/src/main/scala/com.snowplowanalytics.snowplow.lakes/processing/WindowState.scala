@@ -15,7 +15,7 @@ import cats.effect.Sync
 import cats.implicits._
 
 import java.time.format.DateTimeFormatter
-import java.time.ZoneOffset
+import java.time.{Instant, ZoneOffset}
 
 /**
  * Local in-memory state which is accumulated as a window gets processed
@@ -26,8 +26,8 @@ import java.time.ZoneOffset
  * @param tokens
  *   Tokens given to us by the sources library. Emitting these tokens at the end of the window will
  *   trigger checkpointing/acking of the source events.
- * @param viewName
- *   The name by which the current DataFrame is known to the Spark catalog.
+ * @param startTime
+ *   The time this window was initially opened
  * @param nonAtomicColumnNames
  *   Names of the columns which will be written out by the loader
  * @param numEvents
@@ -35,10 +35,16 @@ import java.time.ZoneOffset
  */
 private[processing] case class WindowState(
   tokens: List[Unique.Token],
-  viewName: String,
+  startTime: Instant,
   nonAtomicColumnNames: Set[String],
   numEvents: Int
-)
+) {
+
+  /** The name by which the current DataFrame is known to the Spark catalog */
+  val viewName: String =
+    WindowState.formatter.format(startTime)
+
+}
 
 private[processing] object WindowState {
   private val formatter: DateTimeFormatter =
@@ -48,6 +54,6 @@ private[processing] object WindowState {
 
   def build[F[_]: Sync]: F[WindowState] =
     Sync[F].realTimeInstant.map { now =>
-      WindowState(Nil, formatter.format(now), Set.empty, 0)
+      WindowState(Nil, now, Set.empty, 0)
     }
 }
