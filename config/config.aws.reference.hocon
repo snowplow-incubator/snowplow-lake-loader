@@ -144,6 +144,12 @@
   # -- Controls how often we write/commit pending events to the data lake.
   "windowing": "5 minutes"
 
+  # -- Controls how eagerly the loader starts processing the next timed window even when the previous timed window is still
+  # -- finalizing (committing into the lake). By default, we start processing a timed windows if the previous 1 window is
+  # -- still finalizing, but we do not start processing a timed window if any more older windows are still finalizing.
+  # -- The default value is known to work well for most workloads.
+  "numEagerWindows": 1
+
   # -- Settings relating to the local Spark context use internally by this loader.
   "spark": {
 
@@ -159,6 +165,11 @@
       # -- E.g. to change credentials provider
       "fs.s3a.aws.credentials.provider": "com.amazonaws.auth.InstanceProfileCredentialsProvider"
     }
+
+    # -- Controls how many spark tasks run in parallel during writing the events to cloud storage.
+    # -- E.g. If there are 8 available processors, and cpuParallelismFraction = 0.5, then we have 4 spark tasks for writing.
+    # -- The default value is known to work well. Changing this setting might affect memory usage, file sizes, and/or latency.
+    "writerParallelismFraction": 0.5
   }
 
   # -- Schemas that won't be loaded to the lake.  Optional, default value []

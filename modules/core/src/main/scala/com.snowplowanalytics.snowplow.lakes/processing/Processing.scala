@@ -11,7 +11,6 @@
 package com.snowplowanalytics.snowplow.lakes.processing
 
 import cats.implicits._
-import cats.effect.implicits._
 import cats.data.NonEmptyList
 import cats.{Applicative, Foldable, Functor}
 import cats.effect.{Async, Sync}
@@ -20,10 +19,11 @@ import fs2.{Chunk, Pipe, Stream}
 import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 import org.apache.spark.sql.Row
+import org.apache.spark.sql.types.StructType
 
 import java.nio.charset.StandardCharsets
 import java.nio.ByteBuffer
-import scala.concurrent.duration.{DurationLong, FiniteDuration}
+import scala.concurrent.duration.DurationLong
 
 import com.snowplowanalytics.iglu.client.resolver.registries.{Http4sRegistryLookup, RegistryLookup}
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
@@ -61,30 +61,37 @@ object Processing {
     originalBytes: Long
   )
 
+  private case class Transformed(
+    events: List[Row],
+    schema: StructType
+  )
+
   private def eventProcessor[F[_]: Async: RegistryLookup](
     env: Environment[F]
   ): EventProcessor[F] = { in =>
     val resources = for {
-      now <- Stream.eval(Sync[F].realTime)
-      stateRef <- Stream.eval(Ref[F].of(WindowState.empty))
-      _ <- Stream.bracket(Sync[F].unit)(_ => dropViews(env, stateRef))
-    } yield (stateRef, now)
+      windowState <- Stream.eval(WindowState.build[F])
+      stateRef <- Stream.eval(Ref[F].of(windowState))
+      _ <- manageDataFrame(env, windowState.viewName)
+    } yield stateRef
 
     val badProcessor = BadRowProcessor(env.appInfo.name, env.appInfo.version)
 
-    resources.flatMap { case (stateRef, realTimeWindowStarted) =>
+    resources.flatMap { stateRef =>
       in.through(processBatches(env, badProcessor, stateRef))
-        .append(finalizeWindow(env, stateRef, realTimeWindowStarted))
+        .append(finalizeWindow(env, stateRef))
     }
   }
 
-  private def dropViews[F[_]: Sync](env: Environment[F], ref: Ref[F, WindowState]): F[Unit] =
-    ref.get.flatMap { state =>
-      if (state.framesOnDisk.nonEmpty)
-        env.cpuPermit.surround(env.lakeWriter.removeDataFramesFromDisk(state.framesOnDisk))
-      else
-        Sync[F].unit
-    }
+  /**
+   * Manages the lifecycle of initializing and cleaning a Spark DataFrame scoped to the lifetime of
+   * the window
+   */
+  private def manageDataFrame[F[_]](env: Environment[F], viewName: String): Stream[F, Unit] = {
+    val init = env.lakeWriter.initializeLocalDataFrame(viewName)
+    val drop = env.lakeWriter.removeDataFrameFromDisk(viewName)
+    Stream.bracket(init)(_ => drop)
+  }
 
   private def processBatches[F[_]: Async: RegistryLookup](
     env: Environment[F],
@@ -97,46 +104,41 @@ object Processing {
       .through(parseBytes(env, badProcessor))
       .through(handleParseFailures(env))
       .through(BatchUp.noTimeout(env.inMemBatchBytes))
-      .through(sinkParsedBatch(env, badProcessor, ref))
+      .through(transformBatch(env, badProcessor, ref))
+      .through(sinkTransformedBatch(env, ref))
 
-  /**
-   * The block inside this `parEvalMapUnordered` is CPU-intensive and mainly synchronous, i.e. it
-   * fully occupies a single thread. It does not help overall throughput to break this block into
-   * smaller parallelizable sub-tasks. The currency level on the `parEvalMap` is an important
-   * parameter for letting this loader make full use of the available CPU.
-   */
-  private def sinkParsedBatch[F[_]: RegistryLookup: Async](
+  private def transformBatch[F[_]: RegistryLookup: Async](
     env: Environment[F],
     badProcessor: BadRowProcessor,
     ref: Ref[F, WindowState]
-  ): Pipe[F, Batched, Nothing] =
+  ): Pipe[F, Batched, Transformed] =
     _.parEvalMapUnordered(env.cpuParallelism) { case Batched(events, entities, _) =>
-      env.cpuPermit.surround {
-        val prepare = for {
-          _ <- Logger[F].debug(s"Processing batch of size ${events.size}")
-          nonAtomicFields <- NonAtomicFields.resolveTypes[F](env.resolver, entities, env.schemasToSkip)
-          _ <- rememberColumnNames(ref, nonAtomicFields.fields)
-          (bad, rows) <- transformToSpark[F](badProcessor, events, nonAtomicFields)
-        } yield (bad, rows, SparkSchema.forBatch(nonAtomicFields.fields))
+      for {
+        _ <- Logger[F].debug(s"Processing batch of size ${events.size}")
+        nonAtomicFields <- NonAtomicFields.resolveTypes[F](env.resolver, entities, env.schemasToSkip)
+        _ <- rememberColumnNames(ref, nonAtomicFields.fields)
+        (bad, rows) <- transformToSpark[F](badProcessor, events, nonAtomicFields)
+        _ <- sendFailedEvents(env, bad)
+        _ <- ref.update(s => s.copy(numEvents = s.numEvents + rows.size))
+      } yield Transformed(rows, SparkSchema.forBatch(nonAtomicFields.fields))
+    }
 
-        prepare.flatMap { case (bad, rows, schema) =>
-          val sink = NonEmptyList.fromList(rows) match {
-            case Some(nel) =>
-              for {
-                dfOnDisk <- env.lakeWriter.saveDataFrameToDisk(nel, schema)
-                _ <- rememberDataFrame(ref, dfOnDisk)
-              } yield ()
-            case None =>
-              Logger[F].info(s"An in-memory batch yielded zero good events.  Nothing will be saved to local disk.")
-          }
-
-          sink
-            .both(sendFailedEvents(env, bad))
-            .flatTap { _ =>
-              Logger[F].debug(s"Finished processing batch of size ${events.size}")
-            }
-        }
+  private def sinkTransformedBatch[F[_]: RegistryLookup: Sync](
+    env: Environment[F],
+    ref: Ref[F, WindowState]
+  ): Pipe[F, Transformed, Nothing] =
+    _.evalMap { case Transformed(rows, schema) =>
+      NonEmptyList.fromList(rows) match {
+        case Some(nel) =>
+          for {
+            windowState <- ref.get
+            _ <- env.lakeWriter.localAppendRows(windowState.viewName, nel, schema)
+            _ <- Logger[F].debug(s"Finished processing batch of size ${rows.size}")
+          } yield ()
+        case None =>
+          Logger[F].debug(s"An in-memory batch yielded zero good events.  Nothing will be saved to local disk.")
       }
+
     }.drain
 
   private def setLatency[F[_]: Sync](metrics: Metrics[F]): Pipe[F, TokenedEvents, TokenedEvents] =
@@ -163,9 +165,6 @@ object Processing {
       env.metrics.addReceived(events.size)
     }
 
-  private def rememberDataFrame[F[_]](ref: Ref[F, WindowState], dfOnDisk: DataFrameOnDisk): F[Unit] =
-    ref.update(state => state.copy(framesOnDisk = dfOnDisk :: state.framesOnDisk))
-
   private def rememberColumnNames[F[_]](ref: Ref[F, WindowState], fields: Vector[TypedTabledEntity]): F[Unit] = {
     val colNames = fields.flatMap { typedTabledEntity =>
       typedTabledEntity.mergedField.name :: typedTabledEntity.recoveries.map(_._2.name)
@@ -178,19 +177,17 @@ object Processing {
     processor: BadRowProcessor
   ): Pipe[F, Chunk[ByteBuffer], ParseResult] =
     _.parEvalMapUnordered(env.cpuParallelism) { chunk =>
-      env.cpuPermit.surround {
-        for {
-          numBytes <- Sync[F].delay(Foldable[Chunk].sumBytes(chunk))
-          (badRows, events) <- Foldable[Chunk].traverseSeparateUnordered(chunk) { byteBuffer =>
-                                 Sync[F].delay {
-                                   Event.parseBytes(byteBuffer).toEither.leftMap { failure =>
-                                     val payload = BadRowRawPayload(StandardCharsets.UTF_8.decode(byteBuffer).toString)
-                                     BadRow.LoaderParsingError(processor, failure, payload)
-                                   }
+      for {
+        numBytes <- Sync[F].delay(Foldable[Chunk].sumBytes(chunk))
+        (badRows, events) <- Foldable[Chunk].traverseSeparateUnordered(chunk) { byteBuffer =>
+                               Sync[F].delay {
+                                 Event.parseBytes(byteBuffer).toEither.leftMap { failure =>
+                                   val payload = BadRowRawPayload(StandardCharsets.UTF_8.decode(byteBuffer).toString)
+                                   BadRow.LoaderParsingError(processor, failure, payload)
                                  }
                                }
-        } yield ParseResult(events, badRows, numBytes)
-      }
+                             }
+      } yield ParseResult(events, badRows, numBytes)
     }
 
   private implicit def batchable: BatchUp.Batchable[ParseResult, Batched] = new BatchUp.Batchable[ParseResult, Batched] {
@@ -233,25 +230,21 @@ object Processing {
 
   private def finalizeWindow[F[_]: Sync](
     env: Environment[F],
-    ref: Ref[F, WindowState],
-    realTimeWindowStarted: FiniteDuration
+    ref: Ref[F, WindowState]
   ): Stream[F, Unique.Token] =
     Stream.eval(ref.get).flatMap { state =>
-      val commit = NonEmptyList.fromList(state.framesOnDisk) match {
-        case Some(nel) =>
-          val eventCount = state.framesOnDisk.map(_.count).sum
-          for {
-            _ <- Logger[F].info(s"Ready to Write and commit $eventCount events to the lake.")
-            _ <- Logger[F].info(s"Non atomic columns: [${state.nonAtomicColumnNames.toSeq.sorted.mkString(",")}]")
-            _ <- env.cpuPermit.surround(env.lakeWriter.commit(nel))
-            now <- Sync[F].realTime
-            _ <- Logger[F].info(s"Finished writing and committing $eventCount events to the lake.")
-            _ <- env.metrics.addCommitted(eventCount)
-            _ <- env.metrics.setProcessingLatency(now - realTimeWindowStarted)
-          } yield ()
-        case None =>
-          Logger[F].info("A window yielded zero good events.  Nothing will be written into the lake.")
-      }
+      val commit = if (state.numEvents > 0) {
+        for {
+          _ <- Logger[F].info(s"Window ${state.viewName} ready to write and commit ${state.numEvents} events to the lake.")
+          _ <- Logger[F].info(s"Non atomic columns: [${state.nonAtomicColumnNames.toSeq.sorted.mkString(",")}]")
+          _ <- env.lakeWriter.commit(state.viewName)
+          now <- Sync[F].realTime
+          _ <- Logger[F].info(s"Window ${state.viewName} finished writing and committing ${state.numEvents} events to the lake.")
+          _ <- env.metrics.addCommitted(state.numEvents)
+          _ <- env.metrics.setProcessingLatency(now - state.startTime.toEpochMilli.millis)
+        } yield ()
+      } else
+        Logger[F].info(s"Window ${state.viewName} yielded zero good events.  Nothing will be written into the lake.")
 
       Stream.eval(commit) >> Stream.emits(state.tokens.reverse)
     }
