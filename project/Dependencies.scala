@@ -95,7 +95,7 @@ object Dependencies {
   val hadoopYarn = "org.apache.hadoop"   % "hadoop-yarn-server-resourcemanager" % V.hadoop
   val thrift     = "org.apache.thrift"   % "libthrift"                          % V.thrift
   val netty      = "io.netty"            % "netty-all"                          % V.netty
-  val awsBundle  = "com.amazonaws"       % "aws-java-sdk-bundle"                % V.awsSdk1
+  val awsCore    = "com.amazonaws"       % "aws-java-sdk-core"                  % V.awsSdk1
   val pubsubSdk  = "com.google.cloud"    % "google-cloud-pubsub"                % V.pubsubSdk
 
   // snowplow
@@ -149,8 +149,8 @@ object Dependencies {
 
   val awsDependencies = Seq(
     kinesis,
-    hadoopAws,
-    awsBundle, // Dependency on aws sdk v1 will likely be removed in the next release of hadoop-aws
+    hadoopAws.exclude("software.amazon.awssdk", "bundle"),
+    awsCore, // Dependency on aws sdk v1 will likely be removed in the next release of hadoop-aws
     awsGlue,
     awsS3,
     awsSts,
