@@ -39,6 +39,7 @@ class HudiWriter(config: Config.Hudi) extends Writer {
     val internal_table_name = config.hudiTableOptions.get("hoodie.table.name").getOrElse("events")
 
     Logger[F].info(s"Creating Hudi table ${config.location} if it does not already exist...") >>
+      maybeCreateDatabase[F](spark) *>
       Sync[F].blocking {
         spark.sql(s"""
           CREATE TABLE IF NOT EXISTS $internal_table_name
@@ -49,6 +50,18 @@ class HudiWriter(config: Config.Hudi) extends Writer {
         """)
       }.void
   }
+
+  private def maybeCreateDatabase[F[_]: Sync](spark: SparkSession): F[Unit] =
+    config.hudiWriteOptions.get("hoodie.datasource.hive_sync.database") match {
+      case Some(db) =>
+        Sync[F].blocking {
+          // This action does not have any effect beyond the internals of this loader.
+          // It is required to prevent later exceptions for an unknown database.
+          spark.sql(s"CREATE DATABASE $db")
+        }.void
+      case None =>
+        Sync[F].unit
+    }
 
   override def write[F[_]: Sync](df: DataFrame): F[Unit] =
     Sync[F].blocking {
