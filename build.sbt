@@ -76,7 +76,7 @@ lazy val awsHudi: Project = project
   .withId("awsHudi")
   .settings(BuildSettings.awsSettings ++ BuildSettings.hudiAppSettings)
   .settings(target := (hudi / target).value / "aws")
-  .settings(libraryDependencies ++= Dependencies.awsDependencies)
+  .settings(libraryDependencies ++= Dependencies.awsDependencies ++ Dependencies.hudiAwsDependencies)
   .dependsOn(core)
   .enablePlugins(BuildInfoPlugin, JavaAppPackaging, SnowplowDockerPlugin)
   .dependsOn(hudi % "runtime->runtime")
