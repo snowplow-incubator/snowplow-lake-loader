@@ -50,7 +50,7 @@ object Config {
 
   case class Delta(
     location: URI,
-    dataSkippingColumns: List[String]
+    deltaTableProperties: Map[String, String]
   ) extends Target
 
   case class Hudi(

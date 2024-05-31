@@ -16,7 +16,6 @@ import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 import org.apache.spark.sql.{DataFrame, SparkSession}
 import org.apache.spark.sql.delta.{DeltaAnalysisException, DeltaConcurrentModificationException}
-import org.apache.spark.sql.types.StructField
 import io.delta.tables.DeltaTable
 
 import com.snowplowanalytics.snowplow.lakes.Config
@@ -39,9 +38,12 @@ class DeltaWriter(config: Config.Delta) extends Writer {
       .partitionedBy("load_tstamp_date", "event_name")
       .location(config.location.toString)
       .tableName("events_internal_id") // The name does not matter
-      .property("delta.dataSkippingNumIndexedCols", config.dataSkippingColumns.toSet.size.toString())
 
-    fieldsForCreate(config).foreach(builder.addColumn(_))
+    config.deltaTableProperties.foreach { case (k, v) =>
+      builder.property(k, v)
+    }
+
+    AtomicFields.withLoadTstamp.foreach(f => builder.addColumn(SparkSchema.asSparkField(f)))
 
     // This column needs special treatment because of the `generatedAlwaysAs` clause
     builder.addColumn {
@@ -90,21 +92,5 @@ class DeltaWriter(config: Config.Delta) extends Writer {
             .as(None)
         }
     }
-
-  /**
-   * Ordered spark Fields corresponding to the output of this loader
-   *
-   * Includes fields added by the loader, e.g. `load_tstamp`
-   *
-   * @param config
-   *   The Delta config, whose `dataSkippingColumn` param tells us which columns must go first in
-   *   the table definition. See Delta's data skipping feature to understand why.
-   */
-  private def fieldsForCreate(config: Config.Delta): Iterable[StructField] = {
-    val (withStats, noStats) = AtomicFields.withLoadTstamp.partition { f =>
-      config.dataSkippingColumns.contains(f.name)
-    }
-    (withStats ++ noStats).map(SparkSchema.asSparkField)
-  }
 
 }
