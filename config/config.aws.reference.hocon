@@ -37,6 +37,12 @@
     # -- The number of batches of events which are pre-fetched from kinesis.
     # -- Increasing this above 1 is not known to improve performance.
     "bufferSize": 3
+
+    # -- Name of this KCL worker used in the dynamodb lease table
+    "workerIdentifier": ${HOSTNAME}
+
+    # -- Duration of shard leases. KCL workers must periodically refresh leases in the dynamodb table before this duration expires.
+    "leaseDuration": "10 seconds"
   }
 
   "output": {

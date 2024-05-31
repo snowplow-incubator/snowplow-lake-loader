@@ -25,7 +25,7 @@ object Dependencies {
     val spark35        = "3.5.1"
     val delta          = "3.2.0"
     val hudi           = "0.14.0"
-    val iceberg        = "1.5.1"
+    val iceberg        = "1.5.2"
     val hadoop         = "3.4.0"
     val gcsConnector   = "hadoop3-2.2.17"
     val biglakeIceberg = "0.1.0"
@@ -39,7 +39,7 @@ object Dependencies {
     val awsSdk2  = "2.25.16" // Match common-streams
 
     // Snowplow
-    val streams    = "0.7.0-M2"
+    val streams    = "0.7.0"
     val igluClient = "3.0.0"
 
     // Transitive overrides

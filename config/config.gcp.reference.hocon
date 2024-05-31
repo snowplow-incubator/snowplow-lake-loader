@@ -10,8 +10,9 @@
     # -- Pubsub subscription for the source of enriched events (required)
     "subscription": "projects/myproject/subscriptions/snowplow-enriched"
 
-    # -- How many threads are used internally by the pubsub client library for fetching events
-    "parallelPullCount": 3
+    # -- Controls how many threads are used internally by the pubsub client library for fetching events.
+    # -- The number of threads is equal to this factor multiplied by the number of availble cpu cores
+    "parallelPullFactor": 0.5
 
     # -- How many bytes can be buffered by the loader app before blocking the pubsub client library
     # -- from fetching more events.
