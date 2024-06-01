@@ -44,7 +44,11 @@ object Config {
 
   case class WithIglu[+Source, +Sink](main: Config[Source, Sink], iglu: ResolverConfig)
 
-  case class Output[+Sink](good: Target, bad: Sink)
+  case class Output[+Sink](good: Target, bad: SinkWithMaxSize[Sink])
+
+  case class SinkWithMaxSize[+Sink](sink: Sink, maxRecordSize: Int)
+
+  case class MaxRecordSize(maxRecordSize: Int)
 
   sealed trait Target
 
@@ -113,7 +117,11 @@ object Config {
   )
 
   implicit def decoder[Source: Decoder, Sink: Decoder]: Decoder[Config[Source, Sink]] = {
-    implicit val configuration  = Configuration.default.withDiscriminator("type")
+    implicit val configuration = Configuration.default.withDiscriminator("type")
+    implicit val sinkWithMaxSize = for {
+      sink <- Decoder[Sink]
+      maxSize <- deriveConfiguredDecoder[MaxRecordSize]
+    } yield SinkWithMaxSize(sink, maxSize.maxRecordSize)
     implicit val icebergCatalog = deriveConfiguredDecoder[IcebergCatalog]
     implicit val target         = deriveConfiguredDecoder[Target]
     implicit val output         = deriveConfiguredDecoder[Output[Sink]]

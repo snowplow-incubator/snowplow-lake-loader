@@ -44,6 +44,7 @@ object TestSparkEnvironment {
     inMemBatchBytes = 1000000L,
     cpuParallelism  = 1,
     windowing       = EventProcessingConfig.TimedWindows(1.minute, 1.0, 1),
+    badRowMaxSize   = 1000000,
     schemasToSkip   = List.empty
   )
 

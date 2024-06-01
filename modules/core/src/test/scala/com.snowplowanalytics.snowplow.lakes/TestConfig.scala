@@ -13,6 +13,7 @@ package com.snowplowanalytics.snowplow.lakes
 import com.typesafe.config.ConfigFactory
 import cats.implicits._
 import io.circe.config.syntax._
+import io.circe.Json
 
 import fs2.io.file.Path
 
@@ -27,7 +28,7 @@ object TestConfig {
   def defaults(target: Target, tmpDir: Path): AnyConfig =
     ConfigFactory
       .load(ConfigFactory.parseString(configOverrides(target, tmpDir)))
-      .as[Config[Option[Unit], Option[Unit]]] match {
+      .as[Config[Option[Unit], Json]] match {
       case Right(ok) => ok
       case Left(e)   => throw new RuntimeException("Could not load default config for testing", e)
     }
@@ -37,7 +38,7 @@ object TestConfig {
     target match {
       case Delta =>
         s"""
-        $acceptLicense
+        $commonRequiredConfig
         output.good: {
           type: "Delta"
           location: "$location"
@@ -45,7 +46,7 @@ object TestConfig {
         """
       case Hudi =>
         s"""
-        $acceptLicense
+        $commonRequiredConfig
         output.good: {
           type: "Hudi"
           location: "$location"
@@ -53,7 +54,7 @@ object TestConfig {
         """
       case Iceberg =>
         s"""
-        $acceptLicense
+        $commonRequiredConfig
         output.good: {
           type: "Iceberg"
           database: "test"
@@ -67,10 +68,13 @@ object TestConfig {
     }
   }
 
-  private def acceptLicense: String =
+  private def commonRequiredConfig: String =
     """
     license: {
       accept: true
+    }
+    output.bad: {
+      maxRecordSize: 10000
     }
     """
 
