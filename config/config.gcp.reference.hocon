@@ -58,8 +58,8 @@
 #       "hoodie.metadata.index.column.stats.column.list": "load_tstamp,collector_tstamp,derived_tstamp,dvce_created_tstamp"
 #     }
 #
-#     # -- Any valid hudi table option
-#     "hudiWriteOptions": {
+#     # -- Any valid hudi table property
+#     "hudiTableProperties": {
 #       "hoodie.keygen.timebased.output.dateformat": "yyyy-MM-dd"
 #     }
 #   }
@@ -102,6 +102,12 @@
 #          # -- For example, to enable the catalog cache
 #          "cache-enabled": "true"
 #       }
+#     }
+#
+#     # -- Any valid Iceberg table property
+#     # -- This can be blank in most setups because the loader already sets sensible defaults.
+#     "icebergTableProperties": {
+#       "write.metadata.metrics.column.event_id": "count"
 #     }
 #   }
 

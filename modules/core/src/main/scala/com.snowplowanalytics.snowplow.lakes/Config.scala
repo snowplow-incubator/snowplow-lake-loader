@@ -60,14 +60,15 @@ object Config {
   case class Hudi(
     location: URI,
     hudiWriteOptions: Map[String, String],
-    hudiTableOptions: Map[String, String]
+    hudiTableProperties: Map[String, String]
   ) extends Target
 
   case class Iceberg(
     database: String,
     table: String,
     catalog: IcebergCatalog,
-    location: URI
+    location: URI,
+    icebergTableProperties: Map[String, String]
   ) extends Target
 
   sealed trait IcebergCatalog
