@@ -47,7 +47,7 @@ class IcebergWriter(config: Config.Iceberg) extends Writer {
           (${SparkSchema.ddlForCreate})
           USING ICEBERG
           PARTITIONED BY (date(load_tstamp), event_name)
-          TBLPROPERTIES('write.spark.accept-any-schema'='true')
+          TBLPROPERTIES($tableProps)
           $locationClause
         """)
       }.void
@@ -95,5 +95,12 @@ class IcebergWriter(config: Config.Iceberg) extends Writer {
           "catalog-impl" -> "org.apache.iceberg.aws.glue.GlueCatalog"
         ) ++ c.options
     }
+
+  private def tableProps: String =
+    config.icebergTableProperties
+      .map { case (k, v) =>
+        s"'$k'='$v'"
+      }
+      .mkString(", ")
 
 }

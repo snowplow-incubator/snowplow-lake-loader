@@ -30,13 +30,13 @@ class HudiWriter(config: Config.Hudi) extends Writer {
     )
 
   override def prepareTable[F[_]: Sync](spark: SparkSession): F[Unit] = {
-    val tableProps = config.hudiTableOptions
+    val tableProps = config.hudiTableProperties
       .map { case (k, v) =>
         s"'$k'='$v'"
       }
       .mkString(", ")
 
-    val internal_table_name = config.hudiTableOptions.get("hoodie.table.name").getOrElse("events")
+    val internal_table_name = config.hudiTableProperties.get("hoodie.table.name").getOrElse("events")
 
     Logger[F].info(s"Creating Hudi table ${config.location} if it does not already exist...") >>
       maybeCreateDatabase[F](spark) *>
