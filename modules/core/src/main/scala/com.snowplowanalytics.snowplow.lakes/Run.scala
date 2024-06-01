@@ -11,12 +11,15 @@
 package com.snowplowanalytics.snowplow.lakes
 
 import cats.implicits._
-import cats.effect.{Async, ExitCode, Resource, Sync}
+import cats.effect.implicits._
+import cats.effect.{Async, Deferred, ExitCode, Resource, Sync}
+import cats.effect.std.Dispatcher
 import cats.data.EitherT
 import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 import io.circe.Decoder
 import com.monovore.decline.Opts
+import sun.misc.{Signal, SignalHandler}
 
 import com.snowplowanalytics.snowplow.sources.SourceAndAck
 import com.snowplowanalytics.snowplow.sinks.Sink
@@ -36,10 +39,14 @@ object Run {
   ): Opts[F[ExitCode]] = {
     val configPathOpt = Opts.option[Path]("config", help = "path to config file")
     val igluPathOpt   = Opts.option[Path]("iglu-config", help = "path to iglu resolver config file")
-    (configPathOpt, igluPathOpt).mapN(fromConfigPaths(appInfo, toSource, toBadSink, _, _))
+    (configPathOpt, igluPathOpt).mapN { case (configPath, igluPath) =>
+      fromConfigPaths(appInfo, toSource, toBadSink, configPath, igluPath)
+        .race(waitForSignal)
+        .map(_.merge)
+    }
   }
 
-  private def fromConfigPaths[F[_]: Async, SourceConfig: Decoder, SinkConfig: Decoder](
+  def fromConfigPaths[F[_]: Async, SourceConfig: Decoder, SinkConfig: Decoder](
     appInfo: AppInfo,
     toSource: SourceConfig => F[SourceAndAck[F]],
     toBadSink: SinkConfig => Resource[F, Sink[F]],
@@ -79,6 +86,34 @@ object Run {
         .compile
         .drain
         .as(ExitCode.Success)
+    }
+
+  /**
+   * Trap the SIGTERM and begin graceful shutdown
+   *
+   * This is needed to prevent 3rd party libraries from starting their own shutdown before we are
+   * ready
+   */
+  private def waitForSignal[F[_]: Async]: F[ExitCode] =
+    Dispatcher.sequential(await = true).use { dispatcher =>
+      for {
+        deferred <- Deferred[F, Int]
+        _ <- addShutdownHook(deferred, dispatcher)
+        signal <- deferred.get
+      } yield ExitCode(128 + signal)
+    }
+
+  private def addShutdownHook[F[_]: Sync](deferred: Deferred[F, Int], dispatcher: Dispatcher[F]): F[Unit] =
+    Sync[F].delay {
+      val handler = new SignalHandler {
+        override def handle(signal: Signal): Unit =
+          dispatcher.unsafeRunAndForget {
+            Logger[F].info(s"Received signal ${signal.getNumber}. Cancelling execution.") *>
+              deferred.complete(signal.getNumber)
+          }
+      }
+      Signal.handle(new Signal("TERM"), handler)
+      ()
     }
 
 }

@@ -20,7 +20,6 @@ import org.typelevel.log4cats.slf4j.Slf4jLogger
 import org.apache.spark.sql.{DataFrame, Row, SparkSession}
 import org.apache.spark.sql.functions.current_timestamp
 import org.apache.spark.sql.types.StructType
-import org.apache.spark.SnowplowOverrideShutdownHook
 
 import com.snowplowanalytics.snowplow.lakes.Config
 import com.snowplowanalytics.snowplow.lakes.tables.Writer
@@ -47,9 +46,7 @@ private[processing] object SparkUtils {
     val closeLogF = Logger[F].info("Closing the global spark session...")
     val buildF    = Sync[F].delay(builder.getOrCreate())
 
-    Resource
-      .make(openLogF >> buildF)(s => closeLogF >> Sync[F].blocking(s.close())) <*
-      SnowplowOverrideShutdownHook.resource[F]
+    Resource.make(openLogF >> buildF)(s => closeLogF >> Sync[F].blocking(s.close()))
   }
 
   private def sparkConfigOptions(config: Config.Spark, writer: Writer): Map[String, String] = {
