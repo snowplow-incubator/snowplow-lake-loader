@@ -34,7 +34,14 @@ import com.snowplowanalytics.snowplow.sinks.ListOfList
 import com.snowplowanalytics.snowplow.lakes.{Environment, Metrics}
 import com.snowplowanalytics.snowplow.runtime.processing.BatchUp
 import com.snowplowanalytics.snowplow.runtime.syntax.foldable._
-import com.snowplowanalytics.snowplow.loaders.transform.{NonAtomicFields, SchemaSubVersion, TabledEntity, Transform, TypedTabledEntity}
+import com.snowplowanalytics.snowplow.loaders.transform.{
+  BadRowsSerializer,
+  NonAtomicFields,
+  SchemaSubVersion,
+  TabledEntity,
+  Transform,
+  TypedTabledEntity
+}
 
 object Processing {
 
@@ -102,7 +109,7 @@ object Processing {
       .through(rememberTokens(ref))
       .through(incrementReceivedCount(env))
       .through(parseBytes(env, badProcessor))
-      .through(handleParseFailures(env))
+      .through(handleParseFailures(env, badProcessor))
       .through(BatchUp.noTimeout(env.inMemBatchBytes))
       .through(transformBatch(env, badProcessor, ref))
       .through(sinkTransformedBatch(env, ref))
@@ -118,7 +125,7 @@ object Processing {
         nonAtomicFields <- NonAtomicFields.resolveTypes[F](env.resolver, entities, env.schemasToSkip)
         _ <- rememberColumnNames(ref, nonAtomicFields.fields)
         (bad, rows) <- transformToSpark[F](badProcessor, events, nonAtomicFields)
-        _ <- sendFailedEvents(env, bad)
+        _ <- sendFailedEvents(env, badProcessor, bad)
         _ <- ref.update(s => s.copy(numEvents = s.numEvents + rows.size))
       } yield Transformed(rows, SparkSchema.forBatch(nonAtomicFields.fields))
     }
@@ -216,14 +223,22 @@ object Processing {
       }
     }
 
-  private def handleParseFailures[F[_]: Applicative, A](env: Environment[F]): Pipe[F, ParseResult, ParseResult] =
+  private def handleParseFailures[F[_]: Applicative, A](
+    env: Environment[F],
+    badProcessor: BadRowProcessor
+  ): Pipe[F, ParseResult, ParseResult] =
     _.evalTap { batch =>
-      sendFailedEvents(env, batch.bad)
+      sendFailedEvents(env, badProcessor, batch.bad)
     }
 
-  private def sendFailedEvents[F[_]: Applicative, A](env: Environment[F], bad: List[BadRow]): F[Unit] =
+  private def sendFailedEvents[F[_]: Applicative, A](
+    env: Environment[F],
+    badProcessor: BadRowProcessor,
+    bad: List[BadRow]
+  ): F[Unit] =
     if (bad.nonEmpty) {
       val serialized = bad.map(_.compactByteArray)
+      bad.map(badRow => BadRowsSerializer.withMaxSize(badRow, badProcessor, env.badRowMaxSize))
       env.metrics.addBad(bad.size) *>
         env.badSink.sinkSimple(ListOfList.of(List(serialized)))
     } else Applicative[F].unit

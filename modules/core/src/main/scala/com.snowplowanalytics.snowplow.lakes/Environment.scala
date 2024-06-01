@@ -51,6 +51,7 @@ case class Environment[F[_]](
   cpuParallelism: Int,
   inMemBatchBytes: Long,
   windowing: EventProcessingConfig.TimedWindows,
+  badRowMaxSize: Int,
   schemasToSkip: List[SchemaCriterion]
 )
 
@@ -66,7 +67,7 @@ object Environment {
       _ <- enableSentry[F](appInfo, config.main.monitoring.sentry)
       resolver <- mkResolver[F](config.iglu)
       httpClient <- BlazeClientBuilder[F].withExecutionContext(global.compute).resource
-      badSink <- toSink(config.main.output.bad)
+      badSink <- toSink(config.main.output.bad.sink)
       windowing <- Resource.eval(EventProcessingConfig.TimedWindows.build(config.main.windowing, config.main.numEagerWindows))
       (lakeWriter, lakeWriterHealth) <- LakeWriter.build[F](config.main.spark, config.main.output.good)
       sourceAndAck <- Resource.eval(toSource(config.main.input))
@@ -85,6 +86,7 @@ object Environment {
       cpuParallelism  = cpuParallelism,
       inMemBatchBytes = config.main.inMemBatchBytes,
       windowing       = windowing,
+      badRowMaxSize   = config.main.output.bad.maxRecordSize,
       schemasToSkip   = config.main.skipSchemas
     )
 
