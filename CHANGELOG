@@ -1,3 +1,18 @@
+Version 0.4.0 (2024-06-03)
+--------------------------
+Improve default Iceberg table properties (#62)
+Bad rows must not exceed the maximum size allowed by the sink (#62)
+Trap SIGTERM and start graceful shutdown (#62)
+Improve default Hudi configuration settings (#62)
+Enable syncing Hudi metadata to the Glue Catalog (#62)
+Turn on metrics logging for Iceberg (#62)
+Improve default Delta table properties (#62)
+Bump common-streams and iceberg to latest versions (#62)
+Fix AWS dependencies (#61)
+Optimizations for larger compute instances (#60)
+Bump spark and lake libraries to latest versions (#59)
+Bump common-streams to 0.6.0 (#58)
+
 Version 0.3.0 (2024-03-20)
 --------------------------
 Add AWS Glue as an Iceberg catalog (#55)
