@@ -1,3 +1,7 @@
+Version 0.4.1 (2024-06-04)
+--------------------------
+Fix missing s3 dependency for Delta
+
 Version 0.4.0 (2024-06-03)
 --------------------------
 Improve default Iceberg table properties (#62)
