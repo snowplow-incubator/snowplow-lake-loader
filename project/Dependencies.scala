@@ -89,6 +89,7 @@ object Dependencies {
   val sentry        = "io.sentry"              % "sentry"                % V.sentry
   val awsGlue       = "software.amazon.awssdk" % "glue"                  % V.awsSdk2
   val awsS3         = "software.amazon.awssdk" % "s3"                    % V.awsSdk2
+  val awsS3Transfer = "software.amazon.awssdk" % "s3-transfer-manager"   % V.awsSdk2
   val awsSts        = "software.amazon.awssdk" % "sts"                   % V.awsSdk2
   val awsRegistry   = "software.amazon.glue"   % "schema-registry-serde" % V.awsRegistry
 
@@ -154,9 +155,10 @@ object Dependencies {
     kinesis,
     hadoopAws.exclude("software.amazon.awssdk", "bundle"),
     awsCore, // Dependency on aws sdk v1 will likely be removed in the next release of hadoop-aws
-    awsGlue % Runtime,
-    awsS3   % Runtime,
-    awsSts  % Runtime,
+    awsGlue       % Runtime,
+    awsS3         % Runtime,
+    awsS3Transfer % Runtime,
+    awsSts        % Runtime,
     hadoopClient
   ) ++ commonRuntimeDependencies
 
