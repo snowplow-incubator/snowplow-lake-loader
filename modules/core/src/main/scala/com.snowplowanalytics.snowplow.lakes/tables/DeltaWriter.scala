@@ -43,7 +43,7 @@ class DeltaWriter(config: Config.Delta) extends Writer {
       builder.property(k, v)
     }
 
-    AtomicFields.withLoadTstamp.foreach(f => builder.addColumn(SparkSchema.asSparkField(f)))
+    AtomicFields.withLoadTstamp.foreach(f => builder.addColumn(SparkSchema.asSparkField(f, true)))
 
     // This column needs special treatment because of the `generatedAlwaysAs` clause
     builder.addColumn {

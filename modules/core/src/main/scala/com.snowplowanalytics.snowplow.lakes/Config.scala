@@ -37,7 +37,8 @@ case class Config[+Source, +Sink](
   telemetry: Telemetry.Config,
   monitoring: Config.Monitoring,
   license: AcceptedLicense,
-  skipSchemas: List[SchemaCriterion]
+  skipSchemas: List[SchemaCriterion],
+  respectNullability: Boolean
 )
 
 object Config {
