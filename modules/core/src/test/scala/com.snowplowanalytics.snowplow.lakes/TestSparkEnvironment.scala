@@ -34,18 +34,19 @@ object TestSparkEnvironment {
     testConfig <- Resource.pure(TestConfig.defaults(target, tmpDir))
     (lakeWriter, _) <- LakeWriter.build[IO](testConfig.spark, testConfig.output.good)
   } yield Environment(
-    appInfo         = appInfo,
-    source          = testSourceAndAck(windows),
-    badSink         = Sink[IO](_ => IO.unit),
-    resolver        = Resolver[IO](Nil, None),
-    httpClient      = testHttpClient,
-    lakeWriter      = lakeWriter,
-    metrics         = testMetrics,
-    inMemBatchBytes = 1000000L,
-    cpuParallelism  = 1,
-    windowing       = EventProcessingConfig.TimedWindows(1.minute, 1.0, 1),
-    badRowMaxSize   = 1000000,
-    schemasToSkip   = List.empty
+    appInfo            = appInfo,
+    source             = testSourceAndAck(windows),
+    badSink            = Sink[IO](_ => IO.unit),
+    resolver           = Resolver[IO](Nil, None),
+    httpClient         = testHttpClient,
+    lakeWriter         = lakeWriter,
+    metrics            = testMetrics,
+    inMemBatchBytes    = 1000000L,
+    cpuParallelism     = 1,
+    windowing          = EventProcessingConfig.TimedWindows(1.minute, 1.0, 1),
+    badRowMaxSize      = 1000000,
+    schemasToSkip      = List.empty,
+    respectNullability = true
   )
 
   private def testSourceAndAck(windows: List[List[TokenedEvents]]): SourceAndAck[IO] =
