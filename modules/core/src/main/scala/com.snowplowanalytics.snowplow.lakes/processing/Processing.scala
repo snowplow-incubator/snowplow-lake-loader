@@ -237,8 +237,7 @@ object Processing {
     bad: List[BadRow]
   ): F[Unit] =
     if (bad.nonEmpty) {
-      val serialized = bad.map(_.compactByteArray)
-      bad.map(badRow => BadRowsSerializer.withMaxSize(badRow, badProcessor, env.badRowMaxSize))
+      val serialized = bad.map(badRow => BadRowsSerializer.withMaxSize(badRow, badProcessor, env.badRowMaxSize))
       env.metrics.addBad(bad.size) *>
         env.badSink.sinkSimple(ListOfList.of(List(serialized)))
     } else Applicative[F].unit
