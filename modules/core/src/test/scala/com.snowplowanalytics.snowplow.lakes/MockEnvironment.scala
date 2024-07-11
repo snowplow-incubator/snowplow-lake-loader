@@ -64,15 +64,19 @@ object MockEnvironment {
   def build(windows: List[List[TokenedEvents]]): IO[MockEnvironment] =
     for {
       state <- Ref[IO].of(Vector.empty[Action])
+      source = testSourceAndAck(windows, state)
+      appHealth <- AppHealth.init(10.seconds, source)
+      _ <- appHealth.setServiceHealth(AppHealth.Service.BadSink, isHealthy = true)
     } yield {
       val env = Environment(
         appInfo         = TestSparkEnvironment.appInfo,
-        source          = testSourceAndAck(windows, state),
+        source          = source,
         badSink         = testSink(state),
         resolver        = Resolver[IO](Nil, None),
         httpClient      = testHttpClient,
         lakeWriter      = testLakeWriter(state),
         metrics         = testMetrics(state),
+        appHealth       = appHealth,
         inMemBatchBytes = 1000000L,
         cpuParallelism  = 1,
         windowing       = EventProcessingConfig.TimedWindows(1.minute, 1.0, 1),
@@ -82,7 +86,7 @@ object MockEnvironment {
       MockEnvironment(state, env)
     }
 
-  private def testLakeWriter(state: Ref[IO, Vector[Action]]): LakeWriter[IO] = new LakeWriter[IO] {
+  private def testLakeWriter(state: Ref[IO, Vector[Action]]): LakeWriter.WithHandledErrors[IO] = new LakeWriter.WithHandledErrors[IO] {
     def createTable: IO[Unit] =
       state.update(_ :+ CreatedTable)
 

@@ -10,7 +10,6 @@
 
 package com.snowplowanalytics.snowplow.lakes
 
-import cats.{Functor, Monad}
 import cats.implicits._
 import cats.effect.{Async, Resource, Sync}
 import cats.effect.unsafe.implicits.global
@@ -46,8 +45,9 @@ case class Environment[F[_]](
   badSink: Sink[F],
   resolver: Resolver[F],
   httpClient: Client[F],
-  lakeWriter: LakeWriter[F],
+  lakeWriter: LakeWriter.WithHandledErrors[F],
   metrics: Metrics[F],
+  appHealth: AppHealth[F],
   cpuParallelism: Int,
   inMemBatchBytes: Long,
   windowing: EventProcessingConfig.TimedWindows,
@@ -65,15 +65,16 @@ object Environment {
   ): Resource[F, Environment[F]] =
     for {
       _ <- enableSentry[F](appInfo, config.main.monitoring.sentry)
+      sourceAndAck <- Resource.eval(toSource(config.main.input))
+      appHealth <- Resource.eval(AppHealth.init(config.main.monitoring.healthProbe.unhealthyLatency, sourceAndAck))
+      _ <- HealthProbe.resource(config.main.monitoring.healthProbe.port, appHealth.status)
       resolver <- mkResolver[F](config.iglu)
       httpClient <- BlazeClientBuilder[F].withExecutionContext(global.compute).resource
-      badSink <- toSink(config.main.output.bad.sink)
+      badSink <- toSink(config.main.output.bad.sink).evalTap(_ => appHealth.setServiceHealth(AppHealth.Service.BadSink, true))
       windowing <- Resource.eval(EventProcessingConfig.TimedWindows.build(config.main.windowing, config.main.numEagerWindows))
-      (lakeWriter, lakeWriterHealth) <- LakeWriter.build[F](config.main.spark, config.main.output.good)
-      sourceAndAck <- Resource.eval(toSource(config.main.input))
+      lakeWriter <- LakeWriter.build(config.main.spark, config.main.output.good)
+      lakeWriterWrapped = LakeWriter.withHandledErrors(lakeWriter, appHealth)
       metrics <- Resource.eval(Metrics.build(config.main.monitoring.metrics))
-      isHealthy = combineIsHealthy(sourceIsHealthy(config.main.monitoring.healthProbe, sourceAndAck), lakeWriterHealth)
-      _ <- HealthProbe.resource(config.main.monitoring.healthProbe.port, isHealthy)
       cpuParallelism = chooseCpuParallelism(config.main)
     } yield Environment(
       appInfo         = appInfo,
@@ -81,8 +82,9 @@ object Environment {
       badSink         = badSink,
       resolver        = resolver,
       httpClient      = httpClient,
-      lakeWriter      = lakeWriter,
+      lakeWriter      = lakeWriterWrapped,
       metrics         = metrics,
+      appHealth       = appHealth,
       cpuParallelism  = cpuParallelism,
       inMemBatchBytes = config.main.inMemBatchBytes,
       windowing       = windowing,
@@ -136,16 +138,4 @@ object Environment {
       .setScale(0, BigDecimal.RoundingMode.UP)
       .toInt
 
-  private def sourceIsHealthy[F[_]: Functor](config: Config.HealthProbe, source: SourceAndAck[F]): F[HealthProbe.Status] =
-    source.isHealthy(config.unhealthyLatency).map {
-      case SourceAndAck.Healthy              => HealthProbe.Healthy
-      case unhealthy: SourceAndAck.Unhealthy => HealthProbe.Unhealthy(unhealthy.show)
-    }
-
-  // TODO: This should move to common-streams
-  private def combineIsHealthy[F[_]: Monad](status: F[HealthProbe.Status]*): F[HealthProbe.Status] =
-    status.toList.foldM[F, HealthProbe.Status](HealthProbe.Healthy) {
-      case (unhealthy: HealthProbe.Unhealthy, _) => Monad[F].pure(unhealthy)
-      case (HealthProbe.Healthy, other)          => other
-    }
 }
