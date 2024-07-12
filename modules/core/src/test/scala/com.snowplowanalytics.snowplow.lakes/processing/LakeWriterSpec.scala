@@ -31,8 +31,8 @@ class LakeWriterSpec extends Specification with CatsEffect {
   The lake writer should:
     become healthy after creating the table $e1
     stay unhealthy after failure to create the table $e2
-    stay healthy after committing to the lake $e3
-    become unhealthty after failure to commit to the lake $e4
+    become healthy after committing to the lake $e3
+    become unhealthy after failure to commit to the lake $e4
   """
 
   def e1 =
