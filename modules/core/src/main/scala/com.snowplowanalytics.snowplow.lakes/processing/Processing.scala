@@ -31,7 +31,7 @@ import com.snowplowanalytics.snowplow.badrows.{BadRow, Processor => BadRowProces
 import com.snowplowanalytics.snowplow.badrows.Payload.{RawPayload => BadRowRawPayload}
 import com.snowplowanalytics.snowplow.sources.{EventProcessingConfig, EventProcessor, TokenedEvents}
 import com.snowplowanalytics.snowplow.sinks.ListOfList
-import com.snowplowanalytics.snowplow.lakes.{Environment, Metrics}
+import com.snowplowanalytics.snowplow.lakes.{AppHealth, Environment, Metrics}
 import com.snowplowanalytics.snowplow.runtime.processing.BatchUp
 import com.snowplowanalytics.snowplow.runtime.syntax.foldable._
 import com.snowplowanalytics.snowplow.loaders.transform.{
@@ -223,7 +223,7 @@ object Processing {
       }
     }
 
-  private def handleParseFailures[F[_]: Applicative, A](
+  private def handleParseFailures[F[_]: Sync, A](
     env: Environment[F],
     badProcessor: BadRowProcessor
   ): Pipe[F, ParseResult, ParseResult] =
@@ -231,7 +231,7 @@ object Processing {
       sendFailedEvents(env, badProcessor, batch.bad)
     }
 
-  private def sendFailedEvents[F[_]: Applicative, A](
+  private def sendFailedEvents[F[_]: Sync, A](
     env: Environment[F],
     badProcessor: BadRowProcessor,
     bad: List[BadRow]
@@ -239,7 +239,11 @@ object Processing {
     if (bad.nonEmpty) {
       val serialized = bad.map(badRow => BadRowsSerializer.withMaxSize(badRow, badProcessor, env.badRowMaxSize))
       env.metrics.addBad(bad.size) *>
-        env.badSink.sinkSimple(ListOfList.of(List(serialized)))
+        env.badSink
+          .sinkSimple(ListOfList.of(List(serialized)))
+          .onError { case _ =>
+            env.appHealth.setServiceHealth(AppHealth.Service.BadSink, isHealthy = false)
+          }
     } else Applicative[F].unit
 
   private def finalizeWindow[F[_]: Sync](

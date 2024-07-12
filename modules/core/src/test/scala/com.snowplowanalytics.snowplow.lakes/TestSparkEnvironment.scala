@@ -32,15 +32,20 @@ object TestSparkEnvironment {
     windows: List[List[TokenedEvents]]
   ): Resource[IO, Environment[IO]] = for {
     testConfig <- Resource.pure(TestConfig.defaults(target, tmpDir))
-    (lakeWriter, _) <- LakeWriter.build[IO](testConfig.spark, testConfig.output.good)
+    source = testSourceAndAck(windows)
+    appHealth <- Resource.eval(AppHealth.init(10.seconds, source))
+    _ <- Resource.eval(appHealth.setServiceHealth(AppHealth.Service.BadSink, isHealthy = true))
+    lakeWriter <- LakeWriter.build[IO](testConfig.spark, testConfig.output.good)
+    lakeWriterWrapped = LakeWriter.withHandledErrors(lakeWriter, appHealth)
   } yield Environment(
     appInfo         = appInfo,
-    source          = testSourceAndAck(windows),
+    source          = source,
     badSink         = Sink[IO](_ => IO.unit),
     resolver        = Resolver[IO](Nil, None),
     httpClient      = testHttpClient,
-    lakeWriter      = lakeWriter,
+    lakeWriter      = lakeWriterWrapped,
     metrics         = testMetrics,
+    appHealth       = appHealth,
     inMemBatchBytes = 1000000L,
     cpuParallelism  = 1,
     windowing       = EventProcessingConfig.TimedWindows(1.minute, 1.0, 1),
