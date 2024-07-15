@@ -168,6 +168,12 @@
     "iglu:com.acme/skipped4/jsonschema/*-*-*"
   ]
 
+  # -- Whether the output parquet files should declare nested fields as non-nullable according to the Iglu schema.
+  # -- When true (default), nested fields are nullable only if they are not required fields according to the Iglu schema.
+  # -- When false, all nested fields are defined as nullable in the output table's schemas
+  # -- Set this to false if you use a query engine that dislikes non-nullable nested fields of a nullable struct.
+  "respectIgluNullability": true
+
   "monitoring": {
     "metrics": {
 
