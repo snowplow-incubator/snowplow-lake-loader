@@ -69,20 +69,20 @@ object MockEnvironment {
       _ <- appHealth.setServiceHealth(AppHealth.Service.BadSink, isHealthy = true)
     } yield {
       val env = Environment(
-        appInfo            = TestSparkEnvironment.appInfo,
-        source             = source,
-        badSink            = testSink(state),
-        resolver           = Resolver[IO](Nil, None),
-        httpClient         = testHttpClient,
-        lakeWriter         = testLakeWriter(state),
-        metrics            = testMetrics(state),
-        appHealth          = appHealth,
-        inMemBatchBytes    = 1000000L,
-        cpuParallelism     = 1,
-        windowing          = EventProcessingConfig.TimedWindows(1.minute, 1.0, 1),
-        badRowMaxSize      = 1000000,
-        schemasToSkip      = List.empty,
-        respectNullability = true
+        appInfo                = TestSparkEnvironment.appInfo,
+        source                 = source,
+        badSink                = testSink(state),
+        resolver               = Resolver[IO](Nil, None),
+        httpClient             = testHttpClient,
+        lakeWriter             = testLakeWriter(state),
+        metrics                = testMetrics(state),
+        appHealth              = appHealth,
+        inMemBatchBytes        = 1000000L,
+        cpuParallelism         = 1,
+        windowing              = EventProcessingConfig.TimedWindows(1.minute, 1.0, 1),
+        badRowMaxSize          = 1000000,
+        schemasToSkip          = List.empty,
+        respectIgluNullability = true
       )
       MockEnvironment(state, env)
     }

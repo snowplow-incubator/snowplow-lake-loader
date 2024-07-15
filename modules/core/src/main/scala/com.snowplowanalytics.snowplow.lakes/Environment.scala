@@ -53,7 +53,7 @@ case class Environment[F[_]](
   windowing: EventProcessingConfig.TimedWindows,
   badRowMaxSize: Int,
   schemasToSkip: List[SchemaCriterion],
-  respectNullability: Boolean
+  respectIgluNullability: Boolean
 )
 
 object Environment {
@@ -78,20 +78,20 @@ object Environment {
       metrics <- Resource.eval(Metrics.build(config.main.monitoring.metrics))
       cpuParallelism = chooseCpuParallelism(config.main)
     } yield Environment(
-      appInfo            = appInfo,
-      source             = sourceAndAck,
-      badSink            = badSink,
-      resolver           = resolver,
-      httpClient         = httpClient,
-      lakeWriter         = lakeWriterWrapped,
-      metrics            = metrics,
-      appHealth          = appHealth,
-      cpuParallelism     = cpuParallelism,
-      inMemBatchBytes    = config.main.inMemBatchBytes,
-      windowing          = windowing,
-      badRowMaxSize      = config.main.output.bad.maxRecordSize,
-      schemasToSkip      = config.main.skipSchemas,
-      respectNullability = config.main.respectNullability
+      appInfo                = appInfo,
+      source                 = sourceAndAck,
+      badSink                = badSink,
+      resolver               = resolver,
+      httpClient             = httpClient,
+      lakeWriter             = lakeWriterWrapped,
+      metrics                = metrics,
+      appHealth              = appHealth,
+      cpuParallelism         = cpuParallelism,
+      inMemBatchBytes        = config.main.inMemBatchBytes,
+      windowing              = windowing,
+      badRowMaxSize          = config.main.output.bad.maxRecordSize,
+      schemasToSkip          = config.main.skipSchemas,
+      respectIgluNullability = config.main.respectIgluNullability
     )
 
   private def enableSentry[F[_]: Sync](appInfo: AppInfo, config: Option[Config.Sentry]): Resource[F, Unit] =

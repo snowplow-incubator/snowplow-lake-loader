@@ -38,7 +38,7 @@ case class Config[+Source, +Sink](
   monitoring: Config.Monitoring,
   license: AcceptedLicense,
   skipSchemas: List[SchemaCriterion],
-  respectNullability: Boolean
+  respectIgluNullability: Boolean
 )
 
 object Config {
