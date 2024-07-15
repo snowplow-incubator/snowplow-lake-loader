@@ -32,21 +32,21 @@ lazy val core: Project = project
 lazy val azure: Project = project
   .in(file("modules/azure"))
   .settings(BuildSettings.azureSettings)
-  .settings(libraryDependencies ++= Dependencies.azureDependencies ++ Dependencies.spark35RuntimeDependencies)
+  .settings(libraryDependencies ++= Dependencies.azureDependencies ++ Dependencies.icebergDeltaRuntimeDependencies)
   .dependsOn(core)
   .enablePlugins(BuildInfoPlugin, JavaAppPackaging, SnowplowDockerPlugin)
 
 lazy val gcp: Project = project
   .in(file("modules/gcp"))
   .settings(BuildSettings.gcpSettings)
-  .settings(libraryDependencies ++= Dependencies.gcpDependencies ++ Dependencies.spark35RuntimeDependencies)
+  .settings(libraryDependencies ++= Dependencies.gcpDependencies ++ Dependencies.icebergDeltaRuntimeDependencies)
   .dependsOn(core)
   .enablePlugins(BuildInfoPlugin, JavaAppPackaging, SnowplowDockerPlugin)
 
 lazy val aws: Project = project
   .in(file("modules/aws"))
   .settings(BuildSettings.awsSettings)
-  .settings(libraryDependencies ++= Dependencies.awsDependencies ++ Dependencies.spark35RuntimeDependencies)
+  .settings(libraryDependencies ++= Dependencies.awsDependencies ++ Dependencies.icebergDeltaRuntimeDependencies)
   .dependsOn(core)
   .enablePlugins(BuildInfoPlugin, JavaAppPackaging, SnowplowDockerPlugin)
 

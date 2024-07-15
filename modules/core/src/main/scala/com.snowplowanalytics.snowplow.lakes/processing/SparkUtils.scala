@@ -28,7 +28,7 @@ import scala.jdk.CollectionConverters._
 
 private[processing] object SparkUtils {
 
-  private implicit def logger[F[_]: Sync] = Slf4jLogger.getLogger[F]
+  private implicit def logger[F[_]: Sync]: Logger[F] = Slf4jLogger.getLogger[F]
 
   def session[F[_]: Async](
     config: Config.Spark,
@@ -39,8 +39,7 @@ private[processing] object SparkUtils {
         .builder()
         .appName("snowplow-lake-loader")
         .master(s"local[*, ${config.taskRetries}]")
-
-    builder.config(sparkConfigOptions(config, writer))
+        .config(sparkConfigOptions(config, writer))
 
     val openLogF  = Logger[F].info("Creating the global spark session...")
     val closeLogF = Logger[F].info("Closing the global spark session...")

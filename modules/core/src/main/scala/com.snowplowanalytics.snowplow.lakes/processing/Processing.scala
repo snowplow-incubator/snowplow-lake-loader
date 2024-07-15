@@ -45,7 +45,7 @@ import com.snowplowanalytics.snowplow.loaders.transform.{
 
 object Processing {
 
-  private implicit def logger[F[_]: Sync] = Slf4jLogger.getLogger[F]
+  private implicit def logger[F[_]: Sync]: Logger[F] = Slf4jLogger.getLogger[F]
 
   def stream[F[_]: Async](env: Environment[F]): Stream[F, Nothing] =
     Stream.eval(env.lakeWriter.createTable).flatMap { _ =>
@@ -130,7 +130,7 @@ object Processing {
       } yield Transformed(rows, SparkSchema.forBatch(nonAtomicFields.fields, env.respectIgluNullability))
     }
 
-  private def sinkTransformedBatch[F[_]: RegistryLookup: Sync](
+  private def sinkTransformedBatch[F[_]: Sync](
     env: Environment[F],
     ref: Ref[F, WindowState]
   ): Pipe[F, Transformed, Nothing] =

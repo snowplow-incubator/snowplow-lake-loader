@@ -26,7 +26,7 @@ class HudiSpec extends AbstractSparkSpec {
     spark.sql(s"""
       CREATE TABLE events USING hudi
       LOCATION '$location'
-    """)
+    """): Unit
     spark.sql("select * from events")
   }
 

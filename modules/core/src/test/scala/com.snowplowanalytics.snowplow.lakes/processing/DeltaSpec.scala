@@ -26,7 +26,7 @@ class DeltaSpec extends AbstractSparkSpec {
     spark.sql(s"""
       CREATE TABLE events USING delta
       LOCATION '$location'
-    """)
+    """): Unit
     spark.sql("select * from events")
   }
 
