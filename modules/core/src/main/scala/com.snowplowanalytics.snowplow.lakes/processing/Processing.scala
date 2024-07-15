@@ -127,7 +127,7 @@ object Processing {
         (bad, rows) <- transformToSpark[F](badProcessor, events, nonAtomicFields)
         _ <- sendFailedEvents(env, badProcessor, bad)
         _ <- ref.update(s => s.copy(numEvents = s.numEvents + rows.size))
-      } yield Transformed(rows, SparkSchema.forBatch(nonAtomicFields.fields))
+      } yield Transformed(rows, SparkSchema.forBatch(nonAtomicFields.fields, env.respectIgluNullability))
     }
 
   private def sinkTransformedBatch[F[_]: RegistryLookup: Sync](

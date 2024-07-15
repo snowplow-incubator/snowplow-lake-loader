@@ -22,11 +22,11 @@ object SparkSchema {
    *
    * The returned schema includes atomic fields and non-atomic fields but not the load_tstamp column
    */
-  private[processing] def forBatch(entities: Vector[TypedTabledEntity]): StructType = {
+  private[processing] def forBatch(entities: Vector[TypedTabledEntity], respectIgluNullability: Boolean): StructType = {
     val nonAtomicFields = entities.flatMap { tte =>
       tte.mergedField :: tte.recoveries.map(_._2)
     }
-    StructType(atomic ++ nonAtomicFields.map(asSparkField))
+    StructType(atomic ++ nonAtomicFields.map(asSparkField(_, respectIgluNullability)))
   }
 
   /**
@@ -37,29 +37,30 @@ object SparkSchema {
    * @note
    *   this is a `val` not a `def` because we use it over and over again.
    */
-  val atomic: Vector[StructField] = AtomicFields.static.map(asSparkField)
+  val atomic: Vector[StructField] = AtomicFields.static.map(asSparkField(_, true))
 
   /** String representation of the atomic schema for creating a table using SQL dialiect */
   def ddlForCreate: String =
-    StructType(AtomicFields.withLoadTstamp.map(asSparkField)).toDDL
+    StructType(AtomicFields.withLoadTstamp.map(asSparkField(_, true))).toDDL
 
-  def asSparkField(ddlField: Field): StructField = {
+  def asSparkField(ddlField: Field, respectIgluNullability: Boolean): StructField = {
     val normalizedName = Field.normalize(ddlField).name
-    val dataType       = fieldType(ddlField.fieldType)
-    StructField(normalizedName, dataType, ddlField.nullability.nullable)
+    val dataType       = fieldType(ddlField.fieldType, respectIgluNullability)
+    StructField(normalizedName, dataType, !respectIgluNullability || ddlField.nullability.nullable)
   }
 
-  private def fieldType(ddlType: Type): DataType = ddlType match {
-    case Type.String                        => StringType
-    case Type.Boolean                       => BooleanType
-    case Type.Integer                       => IntegerType
-    case Type.Long                          => LongType
-    case Type.Double                        => DoubleType
-    case Type.Decimal(precision, scale)     => DecimalType(Type.DecimalPrecision.toInt(precision), scale)
-    case Type.Date                          => DateType
-    case Type.Timestamp                     => TimestampType
-    case Type.Struct(fields)                => StructType(fields.toVector.map(asSparkField))
-    case Type.Array(element, elNullability) => ArrayType(fieldType(element), elNullability.nullable)
-    case Type.Json                          => StringType // Spark does not support the `Json` parquet logical type.
+  private def fieldType(ddlType: Type, respectIgluNullability: Boolean): DataType = ddlType match {
+    case Type.String                    => StringType
+    case Type.Boolean                   => BooleanType
+    case Type.Integer                   => IntegerType
+    case Type.Long                      => LongType
+    case Type.Double                    => DoubleType
+    case Type.Decimal(precision, scale) => DecimalType(Type.DecimalPrecision.toInt(precision), scale)
+    case Type.Date                      => DateType
+    case Type.Timestamp                 => TimestampType
+    case Type.Struct(fields)            => StructType(fields.toVector.map(asSparkField(_, respectIgluNullability)))
+    case Type.Array(element, elNullability) =>
+      ArrayType(fieldType(element, respectIgluNullability), !respectIgluNullability || elNullability.nullable)
+    case Type.Json => StringType // Spark does not support the `Json` parquet logical type.
   }
 }
