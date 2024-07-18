@@ -21,7 +21,7 @@ import com.snowplowanalytics.snowplow.lakes.processing.SparkSchema
 
 class HudiWriter(config: Config.Hudi) extends Writer {
 
-  private implicit def logger[F[_]: Sync] = Slf4jLogger.getLogger[F]
+  private implicit def logger[F[_]: Sync]: Logger[F] = Slf4jLogger.getLogger[F]
 
   override def sparkConfig: Map[String, String] =
     Map(
@@ -47,14 +47,14 @@ class HudiWriter(config: Config.Hudi) extends Writer {
           USING HUDI
           LOCATION '${config.location}'
           TBLPROPERTIES($tableProps)
-        """)
+        """): Unit
 
         // We call clean/archive during startup because it also triggers rollback of any previously
         // failed commits. We want to do the rollbacks before early, so that we are immediately
         // healthy once we start consuming events.
         spark.sql(s"""
           CALL run_clean(table => '$internal_table_name')
-        """)
+        """): Unit
         spark.sql(s"""
           CALL archive_commits(table => '$internal_table_name')
         """)
