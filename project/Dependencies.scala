@@ -12,6 +12,18 @@ import sbt._
 object Dependencies {
 
   object V {
+    object Spark {
+
+      // A version of Spark which is compatible with the current version of Iceberg and Delta
+      val forIcebergDelta      = "3.5.1"
+      val forIcebergDeltaMinor = "3.5"
+
+      // Hudi can use a different version of Spark because we bundle a separate Docker image
+      // This version of Spark must be compatible with the current version of Hudi
+      val forHudi      = "3.5.1"
+      val forHudiMinor = "3.5"
+    }
+
     // Scala
     val catsEffect       = "3.5.4"
     val catsRetry        = "3.1.3"
@@ -21,10 +33,8 @@ object Dependencies {
     val betterMonadicFor = "0.3.1"
 
     // Spark
-    val spark34        = "3.4.3"
-    val spark35        = "3.5.1"
     val delta          = "3.2.0"
-    val hudi           = "0.14.0"
+    val hudi           = "0.15.0"
     val iceberg        = "1.5.2"
     val hadoop         = "3.4.0"
     val gcsConnector   = "hadoop3-2.2.17"
@@ -67,21 +77,24 @@ object Dependencies {
   val circeGenericExtra = "io.circe"         %% "circe-generic-extras" % V.circe
   val betterMonadicFor  = "com.olegpy"       %% "better-monadic-for"   % V.betterMonadicFor
 
+  object Spark {
+    val coreForIcebergDelta = "org.apache.spark" %% "spark-core" % V.Spark.forIcebergDelta
+    val sqlForIcebergDelta  = "org.apache.spark" %% "spark-sql"  % V.Spark.forIcebergDelta
+    val coreForHudi         = "org.apache.spark" %% "spark-core" % V.Spark.forHudi
+    val sqlForHudi          = "org.apache.spark" %% "spark-sql"  % V.Spark.forHudi
+    val hiveForHudi         = "org.apache.spark" %% "spark-hive" % V.Spark.forHudi
+  }
+
   // spark and hadoop
-  val sparkCore35  = "org.apache.spark"           %% "spark-core"                % V.spark35
-  val sparkSql35   = "org.apache.spark"           %% "spark-sql"                 % V.spark35
-  val sparkCore34  = "org.apache.spark"           %% "spark-core"                % V.spark34
-  val sparkSql34   = "org.apache.spark"           %% "spark-sql"                 % V.spark34
-  val sparkHive34  = "org.apache.spark"           %% "spark-hive"                % V.spark34
-  val delta        = "io.delta"                   %% "delta-spark"               % V.delta
-  val hudi         = "org.apache.hudi"            %% "hudi-spark3.4-bundle"      % V.hudi
-  val hudiAws      = "org.apache.hudi"             % "hudi-aws"                  % V.hudi
-  val iceberg      = "org.apache.iceberg"         %% "iceberg-spark-runtime-3.5" % V.iceberg
-  val hadoopClient = "org.apache.hadoop"           % "hadoop-client-runtime"     % V.hadoop
-  val hadoopAzure  = "org.apache.hadoop"           % "hadoop-azure"              % V.hadoop
-  val hadoopAws    = "org.apache.hadoop"           % "hadoop-aws"                % V.hadoop
-  val gcsConnector = "com.google.cloud.bigdataoss" % "gcs-connector"             % V.gcsConnector
-  val hiveCommon   = "org.apache.hive"             % "hive-common"               % V.hive
+  val delta        = "io.delta"                   %% "delta-spark"                                            % V.delta
+  val hudi         = "org.apache.hudi"            %% s"hudi-spark${V.Spark.forHudiMinor}-bundle"              % V.hudi
+  val hudiAws      = "org.apache.hudi"             % "hudi-aws"                                               % V.hudi
+  val iceberg      = "org.apache.iceberg"         %% s"iceberg-spark-runtime-${V.Spark.forIcebergDeltaMinor}" % V.iceberg
+  val hadoopClient = "org.apache.hadoop"           % "hadoop-client-runtime"                                  % V.hadoop
+  val hadoopAzure  = "org.apache.hadoop"           % "hadoop-azure"                                           % V.hadoop
+  val hadoopAws    = "org.apache.hadoop"           % "hadoop-aws"                                             % V.hadoop
+  val gcsConnector = "com.google.cloud.bigdataoss" % "gcs-connector"                                          % V.gcsConnector
+  val hiveCommon   = "org.apache.hive"             % "hive-common"                                            % V.hive
 
   // java
   val slf4j         = "org.slf4j"              % "slf4j-simple"          % V.slf4j
@@ -124,11 +137,11 @@ object Dependencies {
     snappy       % Runtime
   )
 
-  val spark35RuntimeDependencies = Seq(
-    delta       % Runtime,
-    iceberg     % Runtime,
-    sparkCore35 % Runtime,
-    sparkSql35  % Runtime
+  val icebergDeltaRuntimeDependencies = Seq(
+    delta                     % Runtime,
+    iceberg                   % Runtime,
+    Spark.coreForIcebergDelta % Runtime,
+    Spark.sqlForIcebergDelta  % Runtime
   )
 
   val coreDependencies = Seq(
@@ -136,10 +149,10 @@ object Dependencies {
     loaders,
     runtime,
     catsRetry,
-    delta       % Provided,
-    sparkCore35 % Provided,
-    sparkSql35  % Provided,
-    iceberg     % Provided,
+    delta                     % Provided,
+    Spark.coreForIcebergDelta % Provided,
+    Spark.sqlForIcebergDelta  % Provided,
+    iceberg                   % Provided,
     igluClientHttp4s,
     blazeClient,
     decline,
@@ -182,10 +195,10 @@ object Dependencies {
   )
 
   val hudiDependencies = Seq(
-    hudi        % Runtime,
-    sparkCore34 % Runtime,
-    sparkSql34  % Runtime,
-    sparkHive34 % Runtime
+    hudi              % Runtime,
+    Spark.coreForHudi % Runtime,
+    Spark.sqlForHudi  % Runtime,
+    Spark.hiveForHudi % Runtime
   )
 
   val hudiAwsDependencies = Seq(

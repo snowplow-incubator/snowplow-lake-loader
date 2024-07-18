@@ -11,7 +11,6 @@
 package com.snowplowanalytics.snowplow.lakes
 
 import com.typesafe.config.ConfigFactory
-import cats.implicits._
 import io.circe.config.syntax._
 import io.circe.Json
 

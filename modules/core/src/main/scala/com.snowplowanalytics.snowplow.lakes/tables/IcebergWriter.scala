@@ -25,7 +25,7 @@ import com.snowplowanalytics.snowplow.lakes.processing.SparkSchema
  */
 class IcebergWriter(config: Config.Iceberg) extends Writer {
 
-  private implicit def logger[F[_]: Sync] = Slf4jLogger.getLogger[F]
+  private implicit def logger[F[_]: Sync]: Logger[F] = Slf4jLogger.getLogger[F]
 
   // The name is not important, outside of this app
   private final val sparkCatalog: String = "iceberg_catalog"
