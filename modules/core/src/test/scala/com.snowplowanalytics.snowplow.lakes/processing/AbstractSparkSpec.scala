@@ -37,9 +37,7 @@ abstract class AbstractSparkSpec extends Specification with CatsEffect {
 
   override val Timeout = 60.seconds
 
-  // TODO: After Hudi 1.0.0 is released, remove `skipAll` to re-enable these tests
-
-  def is = skipAll ^ sequential ^ s2"""
+  def is = sequential ^ s2"""
   The lake loader should:
     Write a single window of events into a lake table $e1
     Create unstruct_* column for unstructured events with valid schemas $e2
