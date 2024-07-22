@@ -181,6 +181,24 @@
     "writerParallelismFraction": 0.5
   }
 
+  # Retry configuration for lake operation failures
+  "retries": {
+
+    # -- Configures exponential backoff on errors related to how lake is set up for this loader.
+    # -- Examples include authentication errors and permissions errors.
+    # -- This class of errors are reported periodically to the monitoring webhook.
+    "setupErrors": {
+      "delay": "30 seconds"
+    }
+
+    # -- Configures exponential backoff errors that are likely to be transient.
+    # -- Examples include server errors and network errors
+    "transientErrors": {
+      "delay": "1 second"
+      "attempts": 5
+    }
+  }
+
   # -- Schemas that won't be loaded to the lake.  Optional, default value []
   "skipSchemas": [
     "iglu:com.acme/skipped1/jsonschema/1-0-0"
@@ -228,6 +246,16 @@
       # -- Map of key/value pairs to be included as tags
       "tags": {
         "myTag": "xyz"
+      }
+    }
+
+    # -- Report alerts to the webhook
+    "webhook": {
+      # An actual HTTP endpoint
+      "endpoint": "https://webhook.acme.com",
+      # Set of arbitrary key-value pairs attached to the payload
+      "tags": {
+        "pipeline": "production"
       }
     }
 

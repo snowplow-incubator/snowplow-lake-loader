@@ -41,8 +41,9 @@ abstract class LoaderApp[SourceConfig: Decoder, SinkConfig: Decoder](
 
   def source: SourceProvider
   def badSink: SinkProvider
+  def isDestinationSetupError: DestinationSetupErrorCheck
 
-  final def main: Opts[IO[ExitCode]] = Run.fromCli(info, source, badSink)
+  final def main: Opts[IO[ExitCode]] = Run.fromCli(info, source, badSink, isDestinationSetupError)
 
 }
 

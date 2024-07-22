@@ -12,4 +12,8 @@ package com.snowplowanalytics.snowplow
 
 package object lakes {
   type AnyConfig = Config[Any, Any]
+
+  // Type for the function that checks whether given exception
+  // is one of the destination setup errors
+  type DestinationSetupErrorCheck = Throwable => Boolean
 }

@@ -10,14 +10,9 @@
 
 package com.snowplowanalytics.snowplow.lakes
 
-import com.snowplowanalytics.snowplow.sources.pubsub.{PubsubSource, PubsubSourceConfig}
-import com.snowplowanalytics.snowplow.sinks.pubsub.{PubsubSink, PubsubSinkConfig}
+object TableFormatSetupError {
 
-object GcpApp extends LoaderApp[PubsubSourceConfig, PubsubSinkConfig](BuildInfo) {
-
-  override def source: SourceProvider = PubsubSource.build(_)
-
-  override def badSink: SinkProvider = PubsubSink.resource(_)
-
-  override def isDestinationSetupError: DestinationSetupErrorCheck = _ => false
+  // Check if given exception is specific to hudi format
+  // TODO: Implement it properly
+  def check: Throwable => Boolean = _ => false
 }

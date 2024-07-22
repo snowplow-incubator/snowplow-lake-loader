@@ -47,7 +47,7 @@ lazy val aws: Project = project
   .in(file("modules/aws"))
   .settings(BuildSettings.awsSettings)
   .settings(libraryDependencies ++= Dependencies.awsDependencies ++ Dependencies.icebergDeltaRuntimeDependencies)
-  .dependsOn(core)
+  .dependsOn(core, deltaIceberg)
   .enablePlugins(BuildInfoPlugin, JavaAppPackaging, SnowplowDockerPlugin)
 
 /** Packaging: Extra runtime dependencies for alternative assets * */
@@ -64,6 +64,11 @@ lazy val biglake: Project = project
   .settings(BuildSettings.commonSettings ++ BuildSettings.biglakeSettings)
   .settings(libraryDependencies ++= Dependencies.biglakeDependencies)
 
+lazy val deltaIceberg: Project = project
+  .in(file("packaging/delta-iceberg"))
+  .settings(BuildSettings.commonSettings)
+  .settings(libraryDependencies ++= Dependencies.icebergDeltaRuntimeDependencies)
+
 /**
  * Packaging: Alternative assets
  *
@@ -79,7 +84,7 @@ lazy val awsHudi: Project = project
   .settings(libraryDependencies ++= Dependencies.awsDependencies ++ Dependencies.hudiAwsDependencies)
   .dependsOn(core)
   .enablePlugins(BuildInfoPlugin, JavaAppPackaging, SnowplowDockerPlugin)
-  .dependsOn(hudi % "runtime->runtime")
+  .dependsOn(hudi % "runtime->runtime;compile->compile")
 
 lazy val gcpHudi: Project = project
   .in(file("modules/gcp"))

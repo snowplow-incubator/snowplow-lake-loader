@@ -35,12 +35,13 @@ object Run {
   def fromCli[F[_]: Async, SourceConfig: Decoder, SinkConfig: Decoder](
     appInfo: AppInfo,
     toSource: SourceConfig => F[SourceAndAck[F]],
-    toBadSink: SinkConfig => Resource[F, Sink[F]]
+    toBadSink: SinkConfig => Resource[F, Sink[F]],
+    destinationSetupErrorCheck: DestinationSetupErrorCheck
   ): Opts[F[ExitCode]] = {
     val configPathOpt = Opts.option[Path]("config", help = "path to config file")
     val igluPathOpt   = Opts.option[Path]("iglu-config", help = "path to iglu resolver config file")
     (configPathOpt, igluPathOpt).mapN { case (configPath, igluPath) =>
-      fromConfigPaths(appInfo, toSource, toBadSink, configPath, igluPath)
+      fromConfigPaths(appInfo, toSource, toBadSink, destinationSetupErrorCheck, configPath, igluPath)
         .race(waitForSignal)
         .map(_.merge)
     }
@@ -50,6 +51,7 @@ object Run {
     appInfo: AppInfo,
     toSource: SourceConfig => F[SourceAndAck[F]],
     toBadSink: SinkConfig => Resource[F, Sink[F]],
+    destinationSetupErrorCheck: DestinationSetupErrorCheck,
     pathToConfig: Path,
     pathToResolver: Path
   ): F[ExitCode] = {
@@ -58,7 +60,7 @@ object Run {
       config <- ConfigParser.configFromFile[F, Config[SourceConfig, SinkConfig]](pathToConfig)
       resolver <- ConfigParser.igluResolverFromFile(pathToResolver)
       configWithIglu = Config.WithIglu(config, resolver)
-      _ <- EitherT.right[String](fromConfig(appInfo, toSource, toBadSink, configWithIglu))
+      _ <- EitherT.right[String](fromConfig(appInfo, toSource, toBadSink, destinationSetupErrorCheck, configWithIglu))
     } yield ExitCode.Success
 
     eitherT
@@ -76,9 +78,10 @@ object Run {
     appInfo: AppInfo,
     toSource: SourceConfig => F[SourceAndAck[F]],
     toBadSink: SinkConfig => Resource[F, Sink[F]],
+    destinationSetupErrorCheck: DestinationSetupErrorCheck,
     config: Config.WithIglu[SourceConfig, SinkConfig]
   ): F[ExitCode] =
-    Environment.fromConfig(config, appInfo, toSource, toBadSink).use { env =>
+    Environment.fromConfig(config, appInfo, toSource, toBadSink, destinationSetupErrorCheck).use { env =>
       Processing
         .stream(env)
         .concurrently(Telemetry.stream(config.main.telemetry, env.appInfo, env.httpClient))
