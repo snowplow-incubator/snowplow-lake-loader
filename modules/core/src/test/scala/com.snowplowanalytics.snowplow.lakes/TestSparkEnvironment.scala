@@ -36,7 +36,7 @@ object TestSparkEnvironment {
     appHealth <- Resource.eval(AppHealth.init(10.seconds, source))
     _ <- Resource.eval(appHealth.setServiceHealth(AppHealth.Service.BadSink, isHealthy = true))
     lakeWriter <- LakeWriter.build[IO](testConfig.spark, testConfig.output.good)
-    lakeWriterWrapped = LakeWriter.withHandledErrors(lakeWriter, appHealth)
+    lakeWriterWrapped = LakeWriter.withHandledErrors(lakeWriter, appHealth, dummyMonitoring, retriesConfig, _ => false)
   } yield Environment(
     appInfo                = appInfo,
     source                 = source,
@@ -53,6 +53,15 @@ object TestSparkEnvironment {
     schemasToSkip          = List.empty,
     respectIgluNullability = true
   )
+
+  private val retriesConfig = Config.Retries(
+    Config.SetupErrorRetries(30.seconds),
+    Config.TransientErrorRetries(1.second, 5)
+  )
+
+  private val dummyMonitoring = new Monitoring[IO] {
+    override def alert(message: Alert): IO[Unit] = IO.unit
+  }
 
   private def testSourceAndAck(windows: List[List[TokenedEvents]]): SourceAndAck[IO] =
     new SourceAndAck[IO] {

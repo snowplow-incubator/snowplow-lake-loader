@@ -140,8 +140,8 @@ object Dependencies {
   )
 
   val icebergDeltaRuntimeDependencies = Seq(
+    iceberg,
     delta                     % Runtime,
-    iceberg                   % Runtime,
     Spark.coreForIcebergDelta % Runtime,
     Spark.sqlForIcebergDelta  % Runtime
   )
@@ -170,8 +170,8 @@ object Dependencies {
     kinesis,
     hadoopAws.exclude("software.amazon.awssdk", "bundle"),
     awsCore, // Dependency on aws sdk v1 will likely be removed in the next release of hadoop-aws
-    awsGlue       % Runtime,
-    awsS3         % Runtime,
+    awsS3,
+    awsGlue,
     awsS3Transfer % Runtime,
     awsSts        % Runtime,
     hadoopClient

@@ -11,12 +11,14 @@
 package com.snowplowanalytics.snowplow.lakes
 
 import cats.Id
+import cats.syntax.either._
 import io.circe.Decoder
 import io.circe.generic.extras.semiauto._
 import io.circe.generic.extras.Configuration
 import io.circe.config.syntax._
 import com.comcast.ip4s.Port
 
+import org.http4s.{ParseFailure, Uri}
 import java.net.URI
 import scala.concurrent.duration.FiniteDuration
 
@@ -38,7 +40,8 @@ case class Config[+Source, +Sink](
   monitoring: Config.Monitoring,
   license: AcceptedLicense,
   skipSchemas: List[SchemaCriterion],
-  respectIgluNullability: Boolean
+  respectIgluNullability: Boolean,
+  retries: Config.Retries
 )
 
 object Config {
@@ -115,7 +118,18 @@ object Config {
   case class Monitoring(
     metrics: Metrics,
     sentry: Option[Sentry],
-    healthProbe: HealthProbe
+    healthProbe: HealthProbe,
+    webhook: Option[Webhook]
+  )
+
+  final case class Webhook(endpoint: Uri, tags: Map[String, String])
+
+  case class SetupErrorRetries(delay: FiniteDuration)
+  case class TransientErrorRetries(delay: FiniteDuration, attempts: Int)
+
+  case class Retries(
+    setupErrors: SetupErrorRetries,
+    transientErrors: TransientErrorRetries
   )
 
   implicit def decoder[Source: Decoder, Sink: Decoder]: Decoder[Config[Source, Sink]] = {
@@ -136,9 +150,15 @@ object Config {
         case SentryM(None, _) =>
           None
       }
+    implicit val http4sUriDecoder: Decoder[Uri] =
+      Decoder[String].emap(s => Either.catchOnly[ParseFailure](Uri.unsafeFromString(s)).leftMap(_.toString))
+    implicit val webhookDecoder     = deriveConfiguredDecoder[Webhook]
     implicit val metricsDecoder     = deriveConfiguredDecoder[Metrics]
     implicit val healthProbeDecoder = deriveConfiguredDecoder[HealthProbe]
     implicit val monitoringDecoder  = deriveConfiguredDecoder[Monitoring]
+    implicit val setupRetries       = deriveConfiguredDecoder[SetupErrorRetries]
+    implicit val transientRetries   = deriveConfiguredDecoder[TransientErrorRetries]
+    implicit val retriesDecoder     = deriveConfiguredDecoder[Retries]
 
     // TODO add specific lake-loader docs for license
     implicit val licenseDecoder =

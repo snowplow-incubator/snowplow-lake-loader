@@ -17,7 +17,7 @@ import cats.effect.std.Mutex
 import org.apache.spark.sql.{Row, SparkSession}
 import org.apache.spark.sql.types.StructType
 
-import com.snowplowanalytics.snowplow.lakes.{AppHealth, Config}
+import com.snowplowanalytics.snowplow.lakes.{Alert, AppHealth, Config, DestinationSetupErrorCheck, Monitoring}
 import com.snowplowanalytics.snowplow.lakes.tables.{DeltaWriter, HudiWriter, IcebergWriter, Writer}
 
 trait LakeWriter[F[_]] {
@@ -86,9 +86,17 @@ object LakeWriter {
     } yield impl(session, w, writerParallelism, mutex1, mutex2)
   }
 
-  def withHandledErrors[F[_]: Sync](underlying: LakeWriter[F], appHealth: AppHealth[F]): WithHandledErrors[F] = new WithHandledErrors[F] {
+  def withHandledErrors[F[_]: Async](
+    underlying: LakeWriter[F],
+    appHealth: AppHealth[F],
+    monitoring: Monitoring[F],
+    retries: Config.Retries,
+    destinationSetupErrorCheck: DestinationSetupErrorCheck
+  ): WithHandledErrors[F] = new WithHandledErrors[F] {
     def createTable: F[Unit] =
-      underlying.createTable <* appHealth.setServiceHealth(AppHealth.Service.SparkWriter, isHealthy = true)
+      Retrying.withRetries(appHealth, retries, monitoring, Alert.FailedToCreateEventsTable, destinationSetupErrorCheck) {
+        underlying.createTable
+      }
 
     def initializeLocalDataFrame(viewName: String): F[Unit] =
       underlying.initializeLocalDataFrame(viewName)

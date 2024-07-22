@@ -62,7 +62,8 @@ object Environment {
     config: Config.WithIglu[SourceConfig, SinkConfig],
     appInfo: AppInfo,
     toSource: SourceConfig => F[SourceAndAck[F]],
-    toSink: SinkConfig => Resource[F, Sink[F]]
+    toSink: SinkConfig => Resource[F, Sink[F]],
+    destinationSetupErrorCheck: DestinationSetupErrorCheck
   ): Resource[F, Environment[F]] =
     for {
       _ <- enableSentry[F](appInfo, config.main.monitoring.sentry)
@@ -71,10 +72,11 @@ object Environment {
       _ <- HealthProbe.resource(config.main.monitoring.healthProbe.port, appHealth.status)
       resolver <- mkResolver[F](config.iglu)
       httpClient <- BlazeClientBuilder[F].withExecutionContext(global.compute).resource
+      monitoring <- Monitoring.create[F](config.main.monitoring.webhook, appInfo, httpClient)
       badSink <- toSink(config.main.output.bad.sink).evalTap(_ => appHealth.setServiceHealth(AppHealth.Service.BadSink, true))
       windowing <- Resource.eval(EventProcessingConfig.TimedWindows.build(config.main.windowing, config.main.numEagerWindows))
       lakeWriter <- LakeWriter.build(config.main.spark, config.main.output.good)
-      lakeWriterWrapped = LakeWriter.withHandledErrors(lakeWriter, appHealth)
+      lakeWriterWrapped = LakeWriter.withHandledErrors(lakeWriter, appHealth, monitoring, config.main.retries, destinationSetupErrorCheck)
       metrics <- Resource.eval(Metrics.build(config.main.monitoring.metrics))
       cpuParallelism = chooseCpuParallelism(config.main)
     } yield Environment(

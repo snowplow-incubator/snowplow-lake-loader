@@ -10,6 +10,10 @@
 
 package com.snowplowanalytics.snowplow.lakes
 
+import software.amazon.awssdk.services.s3.model.{NoSuchBucketException, S3Exception}
+import software.amazon.awssdk.services.sts.model.StsException
+import software.amazon.awssdk.services.glue.model.{AccessDeniedException => GlueAccessDeniedException}
+
 import com.snowplowanalytics.snowplow.sources.kinesis.{KinesisSource, KinesisSourceConfig}
 import com.snowplowanalytics.snowplow.sinks.kinesis.{KinesisSink, KinesisSinkConfig}
 
@@ -18,4 +22,20 @@ object AwsApp extends LoaderApp[KinesisSourceConfig, KinesisSinkConfig](BuildInf
   override def source: SourceProvider = KinesisSource.build(_)
 
   override def badSink: SinkProvider = KinesisSink.resource(_)
+
+  override def isDestinationSetupError: DestinationSetupErrorCheck = {
+    case _: NoSuchBucketException =>
+      // S3 bucket does not exist
+      true
+    case e: S3Exception if e.statusCode() >= 400 && e.statusCode() < 500 =>
+      // No permission to read from S3 bucket or to write to S3 bucket
+      true
+    case _: GlueAccessDeniedException =>
+      // No permission to read from Glue catalog
+      true
+    case _: StsException =>
+      // No permission to assume the role given to authenticate to S3/Glue
+      true
+    case t => TableFormatSetupError.check(t)
+  }
 }
