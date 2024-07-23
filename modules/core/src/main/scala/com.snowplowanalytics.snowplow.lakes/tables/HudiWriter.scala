@@ -12,12 +12,14 @@ package com.snowplowanalytics.snowplow.lakes.tables
 
 import cats.implicits._
 import cats.effect.Sync
-import org.apache.spark.sql.{DataFrame, SparkSession}
+import org.apache.spark.sql.{DataFrame, Row, SparkSession}
 import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 
 import com.snowplowanalytics.snowplow.lakes.Config
 import com.snowplowanalytics.snowplow.lakes.processing.SparkSchema
+
+import scala.jdk.CollectionConverters._
 
 class HudiWriter(config: Config.Hudi) extends Writer {
 
@@ -58,7 +60,9 @@ class HudiWriter(config: Config.Hudi) extends Writer {
         spark.sql(s"""
           CALL archive_commits(table => '$internal_table_name')
         """)
-      }.void
+      }.void *>
+      // We make an empty commit during startup, so the loader can fail early if we are missing any permissions
+      write[F](spark.createDataFrame(List.empty[Row].asJava, SparkSchema.forBatch(Vector.empty, true)))
   }
 
   private def maybeCreateDatabase[F[_]: Sync](spark: SparkSession): F[Unit] =
