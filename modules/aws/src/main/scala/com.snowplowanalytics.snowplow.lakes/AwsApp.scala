@@ -44,7 +44,7 @@ object AwsApp extends LoaderApp[KinesisSourceConfig, KinesisSinkConfig](BuildInf
       // no such bucket exist
       true
     case _: AccessDeniedException =>
-      // 1 - no permission to see s3 bucket
+      // 1 - s3 bucket's permission policy denies all actions
       // 2 - not authorized to assume the role
       true
     case t => TableFormatSetupError.check(t)
