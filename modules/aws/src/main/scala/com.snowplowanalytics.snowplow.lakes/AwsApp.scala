@@ -14,6 +14,10 @@ import software.amazon.awssdk.services.s3.model.{NoSuchBucketException, S3Except
 import software.amazon.awssdk.services.sts.model.StsException
 import software.amazon.awssdk.services.glue.model.{AccessDeniedException => GlueAccessDeniedException}
 
+import org.apache.hadoop.fs.s3a.UnknownStoreException
+
+import java.nio.file.AccessDeniedException
+
 import com.snowplowanalytics.snowplow.sources.kinesis.{KinesisSource, KinesisSourceConfig}
 import com.snowplowanalytics.snowplow.sinks.kinesis.{KinesisSink, KinesisSinkConfig}
 
@@ -35,6 +39,13 @@ object AwsApp extends LoaderApp[KinesisSourceConfig, KinesisSinkConfig](BuildInf
       true
     case _: StsException =>
       // No permission to assume the role given to authenticate to S3/Glue
+      true
+    case _: UnknownStoreException =>
+      // no such bucket exist
+      true
+    case _: AccessDeniedException =>
+      // 1 - no permission to see s3 bucket
+      // 2 - not authorized to assume the role
       true
     case t => TableFormatSetupError.check(t)
   }
