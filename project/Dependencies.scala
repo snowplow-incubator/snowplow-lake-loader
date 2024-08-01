@@ -141,9 +141,9 @@ object Dependencies {
 
   val icebergDeltaRuntimeDependencies = Seq(
     iceberg,
-    delta                     % Runtime,
-    Spark.coreForIcebergDelta % Runtime,
-    Spark.sqlForIcebergDelta  % Runtime
+    delta,
+    Spark.coreForIcebergDelta,
+    Spark.sqlForIcebergDelta % Runtime
   )
 
   val coreDependencies = Seq(

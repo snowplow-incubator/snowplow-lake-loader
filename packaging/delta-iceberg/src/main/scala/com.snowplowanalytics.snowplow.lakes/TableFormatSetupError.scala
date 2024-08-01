@@ -12,6 +12,8 @@ package com.snowplowanalytics.snowplow.lakes
 
 import org.apache.iceberg.exceptions.{ForbiddenException => IcebergForbiddenException, NotFoundException => IcebergNotFoundException}
 
+import org.apache.spark.sql.delta.DeltaIOException
+
 object TableFormatSetupError {
 
   // Check if given exception is specific to iceberg format
@@ -22,6 +24,9 @@ object TableFormatSetupError {
         true
       case _: IcebergForbiddenException =>
         // No permission to create a table in Glue catalog
+        true
+      case _: DeltaIOException =>
+        // no read/write permission in s3 bucket
         true
       case _ =>
         false
