@@ -22,7 +22,7 @@ object SparkSchema {
    *
    * The returned schema includes atomic fields and non-atomic fields but not the load_tstamp column
    */
-  private[processing] def forBatch(entities: Vector[TypedTabledEntity], respectIgluNullability: Boolean): StructType = {
+  def forBatch(entities: Vector[TypedTabledEntity], respectIgluNullability: Boolean): StructType = {
     val nonAtomicFields = entities.flatMap { tte =>
       tte.mergedField :: tte.recoveries.map(_._2)
     }
