@@ -10,9 +10,16 @@
 
 package com.snowplowanalytics.snowplow.lakes
 
+import org.apache.hudi.hive.HoodieHiveSyncException
+
 object TableFormatSetupError {
 
   // Check if given exception is specific to hudi format
-  // TODO: Implement it properly
-  def check: Throwable => Boolean = _ => false
+  def check: Throwable => Option[String] = {
+    case e: HoodieHiveSyncException if e.getMessage.contains("database does not exist") =>
+      // Glue database does not exist or no permission to see it
+      Some(e.getMessage)
+    case _ =>
+      None
+  }
 }

@@ -20,15 +20,14 @@ import com.snowplowanalytics.snowplow.runtime.AppInfo
 import io.circe.Json
 import io.circe.syntax.EncoderOps
 
-import java.sql.SQLException
-
 sealed trait Alert
 object Alert {
 
   /** Restrict the length of an alert message to be compliant with alert iglu schema */
   private val MaxAlertPayloadLength = 4096
 
-  final case class FailedToCreateEventsTable(cause: Throwable) extends Alert
+  final case class FailedToCreateEventsTable(causes: List[String]) extends Alert
+  final case class FailedToCommitEvents(causes: List[String]) extends Alert
 
   def toSelfDescribingJson(
     alert: Alert,
@@ -47,13 +46,14 @@ object Alert {
 
   private def getMessage(alert: Alert): String = {
     val full = alert match {
-      case FailedToCreateEventsTable(cause) => show"Failed to create events table: $cause"
+      case FailedToCreateEventsTable(causes) => show"Failed to create events table: $causes"
+      case FailedToCommitEvents(causes)      => show"Failed to write events into table: $causes"
     }
 
     full.take(MaxAlertPayloadLength)
   }
 
-  private implicit def throwableShow: Show[Throwable] = {
+  private implicit def causesShow: Show[List[String]] = {
     def removeDuplicateMessages(in: List[String]): List[String] =
       in match {
         case h :: t :: rest =>
@@ -63,19 +63,8 @@ object Alert {
         case fewer => fewer
       }
 
-    def accumulateMessages(t: Throwable): List[String] = {
-      val nextMessage = t match {
-        case t: SQLException => Some(s"${t.getMessage} = SqlState: ${t.getSQLState}")
-        case t               => Option(t.getMessage)
-      }
-      Option(t.getCause) match {
-        case Some(cause) => nextMessage.toList ::: accumulateMessages(cause)
-        case None        => nextMessage.toList
-      }
-    }
-
-    Show.show { t =>
-      removeDuplicateMessages(accumulateMessages(t)).mkString(": ")
+    Show.show { causes =>
+      removeDuplicateMessages(causes).mkString(": ")
     }
   }
 }

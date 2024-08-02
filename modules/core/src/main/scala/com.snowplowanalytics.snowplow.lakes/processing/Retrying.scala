@@ -30,7 +30,7 @@ object Retrying {
     appHealth: AppHealth[F],
     config: Config.Retries,
     monitoring: Monitoring[F],
-    toAlert: Throwable => Alert,
+    toAlert: List[String] => Alert,
     destinationSetupErrorCheck: DestinationSetupErrorCheck
   )(
     action: F[A]
@@ -42,16 +42,16 @@ object Retrying {
     appHealth: AppHealth[F],
     config: Config.Retries,
     monitoring: Monitoring[F],
-    toAlert: Throwable => Alert,
+    toAlert: List[String] => Alert,
     destinationSetupErrorCheck: DestinationSetupErrorCheck,
     action: F[A]
   ): F[A] =
     action
       .onError(_ => appHealth.setServiceHealth(AppHealth.Service.SparkWriter, isHealthy = false))
       .retryingOnSomeErrors(
-        isWorthRetrying = destinationSetupErrorCheck(_).pure[F],
+        isWorthRetrying = checkingNestedExceptions(destinationSetupErrorCheck, _).nonEmpty.pure[F],
         policy          = policyForSetupErrors[F](config),
-        onError         = logErrorAndSendAlert[F](monitoring, toAlert, _, _)
+        onError         = logErrorAndSendAlert[F](monitoring, destinationSetupErrorCheck, toAlert, _, _)
       )
       .retryingOnAllErrors(
         policy  = policyForTransientErrors[F](config),
@@ -66,11 +66,12 @@ object Retrying {
 
   private def logErrorAndSendAlert[F[_]: Sync](
     monitoring: Monitoring[F],
-    toAlert: Throwable => Alert,
+    destinationSetupErrorCheck: DestinationSetupErrorCheck,
+    toAlert: List[String] => Alert,
     error: Throwable,
     details: RetryDetails
   ): F[Unit] =
-    logError(error, details) *> monitoring.alert(toAlert(error))
+    logError(error, details) *> monitoring.alert(toAlert(checkingNestedExceptions(destinationSetupErrorCheck, error)))
 
   private def logError[F[_]: Sync](error: Throwable, details: RetryDetails): F[Unit] =
     Logger[F].error(error)(s"Executing command failed. ${extractRetryDetails(details)}")
@@ -81,4 +82,17 @@ object Retrying {
     case RetryDetails.WillDelayAndRetry(nextDelay, retriesSoFar, cumulativeDelay) =>
       s"Will retry in ${nextDelay.toMillis} milliseconds, retries so far: $retriesSoFar, total delay so far: ${cumulativeDelay.toMillis} milliseconds"
   }
+
+  // Returns a list of reasons of why this was a destination setup error.
+  // Or empty list if this was not caused by a destination setup error
+  private def checkingNestedExceptions(
+    destinationSetupErrorCheck: DestinationSetupErrorCheck,
+    t: Throwable
+  ): List[String] =
+    (destinationSetupErrorCheck(t), Option(t.getCause)) match {
+      case (Some(msg), Some(cause)) => msg :: checkingNestedExceptions(destinationSetupErrorCheck, cause)
+      case (Some(msg), None)        => List(msg)
+      case (None, Some(cause))      => checkingNestedExceptions(destinationSetupErrorCheck, cause)
+      case (None, None)             => Nil
+    }
 }
