@@ -31,8 +31,8 @@ class LakeWriterSpec extends Specification with CatsEffect {
   def is = s2"""
   The lake writer should:
     become healthy after creating the table $e1
-    retry adding columns and send alerts when there is a setup exception $e2
-    retry adding columns if there is a transient exception, with limited number of attempts and no monitoring alerts $e3
+    retry creating table and send alerts when there is a setup exception $e2
+    retry creating table if there is a transient exception, with limited number of attempts and no monitoring alerts $e3
     become healthy after recovering from an earlier setup error $e4
     become healthy after recovering from an earlier transient error $e5
     become healthy after committing to the lake $e6
@@ -84,7 +84,7 @@ class LakeWriterSpec extends Specification with CatsEffect {
         c.appHealth,
         c.monitoring,
         retriesConfig,
-        _ => true
+        _ => Some("this is a setup error")
       )
 
       val test = for {
@@ -120,7 +120,7 @@ class LakeWriterSpec extends Specification with CatsEffect {
         c.appHealth,
         c.monitoring,
         retriesConfig,
-        _ => false
+        dummyDestinationSetupErrorCheck
       )
 
       val test = for {
@@ -152,7 +152,7 @@ class LakeWriterSpec extends Specification with CatsEffect {
         c.appHealth,
         c.monitoring,
         retriesConfig,
-        _ => true
+        _ => Some("this is a setup error")
       )
 
       val test = for {
@@ -183,7 +183,7 @@ class LakeWriterSpec extends Specification with CatsEffect {
         c.appHealth,
         c.monitoring,
         retriesConfig,
-        _ => false
+        dummyDestinationSetupErrorCheck
       )
 
       val test = for {
@@ -335,7 +335,7 @@ object LakeWriterSpec {
       } yield ()
   }
 
-  private val dummyDestinationSetupErrorCheck: Throwable => Boolean = _ => false
+  private val dummyDestinationSetupErrorCheck: Throwable => Option[String] = _ => None
 
   private def testLakeWriter(state: Ref[IO, Vector[Action]], mocks: List[Response]): IO[LakeWriter[IO]] =
     for {

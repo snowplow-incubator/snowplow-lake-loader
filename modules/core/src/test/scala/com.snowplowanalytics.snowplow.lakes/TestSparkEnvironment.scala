@@ -36,7 +36,7 @@ object TestSparkEnvironment {
     appHealth <- Resource.eval(AppHealth.init(10.seconds, source))
     _ <- Resource.eval(appHealth.setServiceHealth(AppHealth.Service.BadSink, isHealthy = true))
     lakeWriter <- LakeWriter.build[IO](testConfig.spark, testConfig.output.good)
-    lakeWriterWrapped = LakeWriter.withHandledErrors(lakeWriter, appHealth, dummyMonitoring, retriesConfig, _ => false)
+    lakeWriterWrapped = LakeWriter.withHandledErrors(lakeWriter, appHealth, dummyMonitoring, retriesConfig, _ => None)
   } yield Environment(
     appInfo                = appInfo,
     source                 = source,
