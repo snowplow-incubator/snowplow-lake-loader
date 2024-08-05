@@ -71,7 +71,7 @@ class HudiWriter(config: Config.Hudi) extends Writer {
         Sync[F].blocking {
           // This action does not have any effect beyond the internals of this loader.
           // It is required to prevent later exceptions for an unknown database.
-          spark.sql(s"CREATE DATABASE $db")
+          spark.sql(s"CREATE DATABASE IF NOT EXISTS $db")
         }.void
       case None =>
         Sync[F].unit

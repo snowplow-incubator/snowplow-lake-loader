@@ -19,5 +19,5 @@ object GcpApp extends LoaderApp[PubsubSourceConfig, PubsubSinkConfig](BuildInfo)
 
   override def badSink: SinkProvider = PubsubSink.resource(_)
 
-  override def isDestinationSetupError: DestinationSetupErrorCheck = _ => false
+  override def isDestinationSetupError: DestinationSetupErrorCheck = _ => None
 }
