@@ -62,7 +62,7 @@ class HudiWriter(config: Config.Hudi) extends Writer {
         """)
       }.void *>
       // We make an empty commit during startup, so the loader can fail early if we are missing any permissions
-      write[F](spark.createDataFrame(List.empty[Row].asJava, SparkSchema.forBatch(Vector.empty, true)))
+      write[F](spark.createDataFrame(List.empty[Row].asJava, SparkSchema.structForCreate))
   }
 
   private def maybeCreateDatabase[F[_]: Sync](spark: SparkSession): F[Unit] =
