@@ -22,7 +22,7 @@ object SparkSchema {
    *
    * The returned schema includes atomic fields and non-atomic fields but not the load_tstamp column
    */
-  def forBatch(entities: Vector[TypedTabledEntity], respectIgluNullability: Boolean): StructType = {
+  private[processing] def forBatch(entities: Vector[TypedTabledEntity], respectIgluNullability: Boolean): StructType = {
     val nonAtomicFields = entities.flatMap { tte =>
       tte.mergedField :: tte.recoveries.map(_._2)
     }
@@ -39,9 +39,12 @@ object SparkSchema {
    */
   val atomic: Vector[StructField] = AtomicFields.static.map(asSparkField(_, true))
 
+  def structForCreate: StructType =
+    StructType(AtomicFields.withLoadTstamp.map(asSparkField(_, true)))
+
   /** String representation of the atomic schema for creating a table using SQL dialiect */
   def ddlForCreate: String =
-    StructType(AtomicFields.withLoadTstamp.map(asSparkField(_, true))).toDDL
+    structForCreate.toDDL
 
   def asSparkField(ddlField: Field, respectIgluNullability: Boolean): StructField = {
     val normalizedName = Field.normalize(ddlField).name
