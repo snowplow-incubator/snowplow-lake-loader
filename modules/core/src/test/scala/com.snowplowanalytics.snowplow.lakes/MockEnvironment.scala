@@ -33,11 +33,15 @@ object MockEnvironment {
   /** All tests can use the same window duration */
   val WindowDuration = 42.seconds
 
+  /** All tests can use the same time taken to create table */
+  val TimeTakenToCreateTable = 10.seconds
+
   sealed trait Action
   object Action {
+    case object SubscribedToStream extends Action
+    case object CreatedTable extends Action
     case class Checkpointed(tokens: List[Unique.Token]) extends Action
     case class SentToBad(count: Int) extends Action
-    case object CreatedTable extends Action
     case class InitializedLocalDataFrame(viewName: String) extends Action
     case class AppendedRowsToDataFrame(viewName: String, numEvents: Int) extends Action
     case class RemovedDataFrameFromDisk(viewName: String) extends Action
@@ -89,7 +93,7 @@ object MockEnvironment {
 
   private def testLakeWriter(state: Ref[IO, Vector[Action]]): LakeWriter.WithHandledErrors[IO] = new LakeWriter.WithHandledErrors[IO] {
     def createTable: IO[Unit] =
-      state.update(_ :+ CreatedTable)
+      IO.sleep(TimeTakenToCreateTable) *> state.update(_ :+ CreatedTable)
 
     def initializeLocalDataFrame(viewName: String): IO[Unit] =
       state.update(_ :+ InitializedLocalDataFrame(viewName))
@@ -111,17 +115,18 @@ object MockEnvironment {
   private def testSourceAndAck(windows: List[List[TokenedEvents]], state: Ref[IO, Vector[Action]]): SourceAndAck[IO] =
     new SourceAndAck[IO] {
       def stream(config: EventProcessingConfig, processor: EventProcessor[IO]): Stream[IO, Nothing] =
-        Stream.emits(windows).flatMap { batches =>
-          Stream
-            .emits(batches)
-            .onFinalize(IO.sleep(WindowDuration))
-            .through(processor)
-            .chunks
-            .evalMap { chunk =>
-              state.update(_ :+ Checkpointed(chunk.toList))
-            }
-            .drain
-        }
+        Stream.eval(state.update(_ :+ SubscribedToStream)).drain ++
+          Stream.emits(windows).flatMap { batches =>
+            Stream
+              .emits(batches)
+              .onFinalize(IO.sleep(WindowDuration))
+              .through(processor)
+              .chunks
+              .evalMap { chunk =>
+                state.update(_ :+ Checkpointed(chunk.toList))
+              }
+              .drain
+          }
 
       def isHealthy(maxAllowedProcessingLatency: FiniteDuration): IO[SourceAndAck.HealthStatus] =
         IO.pure(SourceAndAck.Healthy)

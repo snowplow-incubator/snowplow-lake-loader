@@ -13,7 +13,7 @@ package com.snowplowanalytics.snowplow.lakes.processing
 import cats.implicits._
 import cats.data.NonEmptyList
 import cats.{Applicative, Foldable, Functor}
-import cats.effect.{Async, Sync}
+import cats.effect.{Async, Deferred, Sync}
 import cats.effect.kernel.{Ref, Unique}
 import fs2.{Chunk, Pipe, Stream}
 import org.typelevel.log4cats.Logger
@@ -48,10 +48,19 @@ object Processing {
   private implicit def logger[F[_]: Sync]: Logger[F] = Slf4jLogger.getLogger[F]
 
   def stream[F[_]: Async](env: Environment[F]): Stream[F, Nothing] =
-    Stream.eval(env.lakeWriter.createTable).flatMap { _ =>
+    Stream.eval(Deferred[F, Unit]).flatMap { deferredTableExists =>
+      val runInBackground =
+        // Create the table in a background stream, so it does not block subscribing to the stream.
+        // Needed for Kinesis, where we want to subscribe to the stream as early as possible, so that other workers don't steal our shard leases
+        Stream.eval(env.lakeWriter.createTable *> deferredTableExists.complete(()))
+
       implicit val lookup: RegistryLookup[F]           = Http4sRegistryLookup(env.httpClient)
       val eventProcessingConfig: EventProcessingConfig = EventProcessingConfig(env.windowing)
-      env.source.stream(eventProcessingConfig, eventProcessor(env))
+
+      env.source
+        .stream(eventProcessingConfig, eventProcessor(env, deferredTableExists.get))
+        .concurrently(runInBackground)
+
     }
 
   /** Model used between stages of the processing pipeline */
@@ -74,9 +83,11 @@ object Processing {
   )
 
   private def eventProcessor[F[_]: Async: RegistryLookup](
-    env: Environment[F]
+    env: Environment[F],
+    deferredTableExists: F[Unit]
   ): EventProcessor[F] = { in =>
     val resources = for {
+      _ <- Stream.eval(deferredTableExists)
       windowState <- Stream.eval(WindowState.build[F])
       stateRef <- Stream.eval(Ref[F].of(windowState))
       _ <- manageDataFrame(env, windowState.viewName)
