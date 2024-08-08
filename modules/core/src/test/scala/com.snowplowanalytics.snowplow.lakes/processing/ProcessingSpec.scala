@@ -46,16 +46,17 @@ class ProcessingSpec extends Specification with CatsEffect {
       state <- control.state.get
     } yield state should beEqualTo(
       Vector(
+        Action.SubscribedToStream,
         Action.CreatedTable,
-        Action.InitializedLocalDataFrame("v19700101000000"),
+        Action.InitializedLocalDataFrame("v19700101000010"),
         Action.AddedReceivedCountMetric(2),
         Action.AddedReceivedCountMetric(2),
-        Action.AppendedRowsToDataFrame("v19700101000000", 4),
-        Action.CommittedToTheLake("v19700101000000"),
+        Action.AppendedRowsToDataFrame("v19700101000010", 4),
+        Action.CommittedToTheLake("v19700101000010"),
         Action.AddedCommittedCountMetric(4),
         Action.SetProcessingLatencyMetric(MockEnvironment.WindowDuration),
         Action.Checkpointed(inputs.map(_.ack)),
-        Action.RemovedDataFrameFromDisk("v19700101000000")
+        Action.RemovedDataFrameFromDisk("v19700101000010")
       )
     )
 
@@ -70,8 +71,9 @@ class ProcessingSpec extends Specification with CatsEffect {
       state <- control.state.get
     } yield state should beEqualTo(
       Vector(
+        Action.SubscribedToStream,
         Action.CreatedTable,
-        Action.InitializedLocalDataFrame("v19700101000000"),
+        Action.InitializedLocalDataFrame("v19700101000010"),
         Action.AddedReceivedCountMetric(2),
         Action.AddedBadCountMetric(2),
         Action.SentToBad(2),
@@ -82,7 +84,7 @@ class ProcessingSpec extends Specification with CatsEffect {
         Action.AddedBadCountMetric(2),
         Action.SentToBad(2),
         Action.Checkpointed(inputs.map(_.ack)),
-        Action.RemovedDataFrameFromDisk("v19700101000000")
+        Action.RemovedDataFrameFromDisk("v19700101000010")
       )
     )
 
@@ -99,40 +101,41 @@ class ProcessingSpec extends Specification with CatsEffect {
       state <- control.state.get
     } yield state should beEqualTo(
       Vector(
+        Action.SubscribedToStream,
         Action.CreatedTable,
 
         /* window 1 */
-        Action.InitializedLocalDataFrame("v19700101000000"),
+        Action.InitializedLocalDataFrame("v19700101000010"),
         Action.AddedReceivedCountMetric(2),
-        Action.AppendedRowsToDataFrame("v19700101000000", 2),
-        Action.CommittedToTheLake("v19700101000000"),
+        Action.AppendedRowsToDataFrame("v19700101000010", 2),
+        Action.CommittedToTheLake("v19700101000010"),
         Action.AddedCommittedCountMetric(2),
         Action.SetProcessingLatencyMetric(MockEnvironment.WindowDuration),
         Action.Checkpointed(window1.map(_.ack)),
-        Action.RemovedDataFrameFromDisk("v19700101000000"),
+        Action.RemovedDataFrameFromDisk("v19700101000010"),
 
         /* window 2 */
-        Action.InitializedLocalDataFrame("v19700101000042"),
+        Action.InitializedLocalDataFrame("v19700101000052"),
         Action.AddedReceivedCountMetric(2),
         Action.AddedReceivedCountMetric(2),
         Action.AddedReceivedCountMetric(2),
-        Action.AppendedRowsToDataFrame("v19700101000042", 6),
-        Action.CommittedToTheLake("v19700101000042"),
+        Action.AppendedRowsToDataFrame("v19700101000052", 6),
+        Action.CommittedToTheLake("v19700101000052"),
         Action.AddedCommittedCountMetric(6),
         Action.SetProcessingLatencyMetric(MockEnvironment.WindowDuration),
         Action.Checkpointed(window2.map(_.ack)),
-        Action.RemovedDataFrameFromDisk("v19700101000042"),
+        Action.RemovedDataFrameFromDisk("v19700101000052"),
 
         /* window 3 */
-        Action.InitializedLocalDataFrame("v19700101000124"),
+        Action.InitializedLocalDataFrame("v19700101000134"),
         Action.AddedReceivedCountMetric(2),
         Action.AddedReceivedCountMetric(2),
-        Action.AppendedRowsToDataFrame("v19700101000124", 4),
-        Action.CommittedToTheLake("v19700101000124"),
+        Action.AppendedRowsToDataFrame("v19700101000134", 4),
+        Action.CommittedToTheLake("v19700101000134"),
         Action.AddedCommittedCountMetric(4),
         Action.SetProcessingLatencyMetric(MockEnvironment.WindowDuration),
         Action.Checkpointed(window3.map(_.ack)),
-        Action.RemovedDataFrameFromDisk("v19700101000124")
+        Action.RemovedDataFrameFromDisk("v19700101000134")
       )
     )
 
@@ -148,19 +151,20 @@ class ProcessingSpec extends Specification with CatsEffect {
       state <- control.state.get
     } yield state should beEqualTo(
       Vector(
+        Action.SubscribedToStream,
         Action.CreatedTable,
-        Action.InitializedLocalDataFrame("v19700101000000"),
+        Action.InitializedLocalDataFrame("v19700101000010"),
         Action.AddedReceivedCountMetric(2),
-        Action.AppendedRowsToDataFrame("v19700101000000", 2),
+        Action.AppendedRowsToDataFrame("v19700101000010", 2),
         Action.AddedReceivedCountMetric(2),
-        Action.AppendedRowsToDataFrame("v19700101000000", 2),
+        Action.AppendedRowsToDataFrame("v19700101000010", 2),
         Action.AddedReceivedCountMetric(2),
-        Action.AppendedRowsToDataFrame("v19700101000000", 2),
-        Action.CommittedToTheLake("v19700101000000"),
+        Action.AppendedRowsToDataFrame("v19700101000010", 2),
+        Action.CommittedToTheLake("v19700101000010"),
         Action.AddedCommittedCountMetric(6),
         Action.SetProcessingLatencyMetric(MockEnvironment.WindowDuration),
         Action.Checkpointed(inputs.map(_.ack)),
-        Action.RemovedDataFrameFromDisk("v19700101000000")
+        Action.RemovedDataFrameFromDisk("v19700101000010")
       )
     )
 
@@ -178,8 +182,9 @@ class ProcessingSpec extends Specification with CatsEffect {
       state <- control.state.get
     } yield state should beEqualTo(
       Vector(
+        Action.SubscribedToStream,
         Action.CreatedTable,
-        Action.InitializedLocalDataFrame("v19700101000000"),
+        Action.InitializedLocalDataFrame("v19700101000010"),
         Action.AddedReceivedCountMetric(2),
         Action.AddedBadCountMetric(2),
         Action.SentToBad(2),
@@ -196,12 +201,12 @@ class ProcessingSpec extends Specification with CatsEffect {
         Action.AddedBadCountMetric(2),
         Action.SentToBad(2),
         Action.AddedReceivedCountMetric(2),
-        Action.AppendedRowsToDataFrame("v19700101000000", 8),
-        Action.CommittedToTheLake("v19700101000000"),
+        Action.AppendedRowsToDataFrame("v19700101000010", 8),
+        Action.CommittedToTheLake("v19700101000010"),
         Action.AddedCommittedCountMetric(8),
         Action.SetProcessingLatencyMetric(MockEnvironment.WindowDuration),
         Action.Checkpointed((bads1 ::: goods1 ::: bads2 ::: goods2).map(_.ack)),
-        Action.RemovedDataFrameFromDisk("v19700101000000")
+        Action.RemovedDataFrameFromDisk("v19700101000010")
       )
     )
 
@@ -210,7 +215,7 @@ class ProcessingSpec extends Specification with CatsEffect {
 
   def e6 = {
     val messageTime = Instant.parse("2023-10-24T10:00:00.000Z")
-    val processTime = Instant.parse("2023-10-24T10:00:42.123Z")
+    val processTime = Instant.parse("2023-10-24T10:00:42.123Z").minusMillis(MockEnvironment.TimeTakenToCreateTable.toMillis)
 
     val io = for {
       inputs <- generateEvents.take(2).compile.toList.map {
@@ -224,6 +229,7 @@ class ProcessingSpec extends Specification with CatsEffect {
       state <- control.state.get
     } yield state should beEqualTo(
       Vector(
+        Action.SubscribedToStream,
         Action.CreatedTable,
         Action.InitializedLocalDataFrame("v20231024100042"),
         Action.SetLatencyMetric(42123.millis),
