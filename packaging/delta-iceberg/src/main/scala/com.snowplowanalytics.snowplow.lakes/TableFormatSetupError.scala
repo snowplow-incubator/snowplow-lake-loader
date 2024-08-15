@@ -15,15 +15,12 @@ import org.apache.iceberg.exceptions.{ForbiddenException => IcebergForbiddenExce
 object TableFormatSetupError {
 
   // Check if given exception is specific to iceberg format
-  def check(t: Throwable): Option[String] =
-    t match {
+  def check: PartialFunction[Throwable, String] = {
       case e: IcebergNotFoundException =>
         // Glue catalog does not exist
-        Some(e.getMessage)
+        e.getMessage
       case e: IcebergForbiddenException =>
         // No permission to create a table in Glue catalog
-        Some(e.getMessage)
-      case _ =>
-        None
+        e.getMessage
     }
 }

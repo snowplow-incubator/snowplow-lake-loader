@@ -22,7 +22,7 @@ import com.snowplowanalytics.iglu.core.SchemaCriterion
 import com.snowplowanalytics.snowplow.sources.{EventProcessingConfig, SourceAndAck}
 import com.snowplowanalytics.snowplow.sinks.Sink
 import com.snowplowanalytics.snowplow.lakes.processing.LakeWriter
-import com.snowplowanalytics.snowplow.runtime.{AppInfo, HealthProbe}
+import com.snowplowanalytics.snowplow.runtime.{AppHealth, AppInfo, HealthProbe, Webhook}
 
 /**
  * Resources and runtime-derived configuration needed for processing events
@@ -47,7 +47,7 @@ case class Environment[F[_]](
   httpClient: Client[F],
   lakeWriter: LakeWriter.WithHandledErrors[F],
   metrics: Metrics[F],
-  appHealth: AppHealth[F],
+  appHealth: AppHealth.Interface[F, Alert, RuntimeService],
   cpuParallelism: Int,
   inMemBatchBytes: Long,
   windowing: EventProcessingConfig.TimedWindows,
@@ -68,15 +68,16 @@ object Environment {
     for {
       _ <- enableSentry[F](appInfo, config.main.monitoring.sentry)
       sourceAndAck <- Resource.eval(toSource(config.main.input))
-      appHealth <- Resource.eval(AppHealth.init(config.main.monitoring.healthProbe.unhealthyLatency, sourceAndAck))
-      _ <- HealthProbe.resource(config.main.monitoring.healthProbe.port, appHealth.status)
+      sourceReporter = sourceAndAck.isHealthy(config.main.monitoring.healthProbe.unhealthyLatency).map(_.showIfUnhealthy)
+      appHealth <- Resource.eval(AppHealth.init[F, Alert, RuntimeService](List(sourceReporter)))
       resolver <- mkResolver[F](config.iglu)
       httpClient <- BlazeClientBuilder[F].withExecutionContext(global.compute).resource
-      monitoring <- Monitoring.create[F](config.main.monitoring.webhook, appInfo, httpClient)
-      badSink <- toSink(config.main.output.bad.sink).evalTap(_ => appHealth.setServiceHealth(AppHealth.Service.BadSink, true))
+      _ <- HealthProbe.resource(config.main.monitoring.healthProbe.port, appHealth)
+      _ <- Webhook.resource(config.main.monitoring.webhook, appInfo, httpClient, appHealth)
+      badSink <- toSink(config.main.output.bad.sink) // TODO: set bad sink health on error?
       windowing <- Resource.eval(EventProcessingConfig.TimedWindows.build(config.main.windowing, config.main.numEagerWindows))
       lakeWriter <- LakeWriter.build(config.main.spark, config.main.output.good)
-      lakeWriterWrapped = LakeWriter.withHandledErrors(lakeWriter, appHealth, monitoring, config.main.retries, destinationSetupErrorCheck)
+      lakeWriterWrapped = LakeWriter.withHandledErrors(lakeWriter, appHealth, config.main.retries, destinationSetupErrorCheck)
       metrics <- Resource.eval(Metrics.build(config.main.monitoring.metrics))
       cpuParallelism = chooseCpuParallelism(config.main)
     } yield Environment(
