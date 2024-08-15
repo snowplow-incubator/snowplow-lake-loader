@@ -33,14 +33,14 @@ lazy val azure: Project = project
   .in(file("modules/azure"))
   .settings(BuildSettings.azureSettings)
   .settings(libraryDependencies ++= Dependencies.azureDependencies ++ Dependencies.icebergDeltaRuntimeDependencies)
-  .dependsOn(core)
+  .dependsOn(core, deltaIceberg)
   .enablePlugins(BuildInfoPlugin, JavaAppPackaging, SnowplowDockerPlugin)
 
 lazy val gcp: Project = project
   .in(file("modules/gcp"))
   .settings(BuildSettings.gcpSettings)
   .settings(libraryDependencies ++= Dependencies.gcpDependencies ++ Dependencies.icebergDeltaRuntimeDependencies)
-  .dependsOn(core)
+  .dependsOn(core, deltaIceberg)
   .enablePlugins(BuildInfoPlugin, JavaAppPackaging, SnowplowDockerPlugin)
 
 lazy val aws: Project = project
@@ -50,7 +50,7 @@ lazy val aws: Project = project
   .dependsOn(core, deltaIceberg)
   .enablePlugins(BuildInfoPlugin, JavaAppPackaging, SnowplowDockerPlugin)
 
-/** Packaging: Extra runtime dependencies for alternative assets * */
+/** Packaging: Extra runtime dependencies for alternative assets */
 
 lazy val hudi: Project = project
   .in(file("packaging/hudi"))
@@ -94,7 +94,7 @@ lazy val gcpHudi: Project = project
   .settings(libraryDependencies ++= Dependencies.gcpDependencies)
   .dependsOn(core)
   .enablePlugins(BuildInfoPlugin, JavaAppPackaging, SnowplowDockerPlugin)
-  .dependsOn(hudi % "runtime->runtime")
+  .dependsOn(hudi % "runtime->runtime;compile->compile")
 
 lazy val azureHudi: Project = project
   .in(file("modules/azure"))
@@ -104,7 +104,7 @@ lazy val azureHudi: Project = project
   .settings(libraryDependencies ++= Dependencies.azureDependencies)
   .dependsOn(core)
   .enablePlugins(BuildInfoPlugin, JavaAppPackaging, SnowplowDockerPlugin)
-  .dependsOn(hudi % "runtime->runtime")
+  .dependsOn(hudi % "runtime->runtime;compile->compile")
 
 lazy val gcpBiglake: Project = gcp
   .withId("gcpBiglake")
