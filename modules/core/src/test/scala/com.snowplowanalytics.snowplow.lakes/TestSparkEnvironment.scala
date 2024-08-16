@@ -36,20 +36,21 @@ object TestSparkEnvironment {
     lakeWriter <- LakeWriter.build[IO](testConfig.spark, testConfig.output.good)
     lakeWriterWrapped = LakeWriter.withHandledErrors(lakeWriter, dummyAppHealth, retriesConfig, PartialFunction.empty)
   } yield Environment(
-    appInfo                = appInfo,
-    source                 = source,
-    badSink                = Sink[IO](_ => IO.unit),
-    resolver               = Resolver[IO](Nil, None),
-    httpClient             = testHttpClient,
-    lakeWriter             = lakeWriterWrapped,
-    metrics                = testMetrics,
-    appHealth              = dummyAppHealth,
-    inMemBatchBytes        = 1000000L,
-    cpuParallelism         = 1,
-    windowing              = EventProcessingConfig.TimedWindows(1.minute, 1.0, 1),
-    badRowMaxSize          = 1000000,
-    schemasToSkip          = List.empty,
-    respectIgluNullability = true
+    appInfo                 = appInfo,
+    source                  = source,
+    badSink                 = Sink[IO](_ => IO.unit),
+    resolver                = Resolver[IO](Nil, None),
+    httpClient              = testHttpClient,
+    lakeWriter              = lakeWriterWrapped,
+    metrics                 = testMetrics,
+    appHealth               = dummyAppHealth,
+    inMemBatchBytes         = 1000000L,
+    cpuParallelism          = 1,
+    windowing               = EventProcessingConfig.TimedWindows(1.minute, 1.0, 1),
+    badRowMaxSize           = 1000000,
+    schemasToSkip           = List.empty,
+    respectIgluNullability  = true,
+    exitOnMissingIgluSchema = false
   )
 
   private val retriesConfig = Config.Retries(
