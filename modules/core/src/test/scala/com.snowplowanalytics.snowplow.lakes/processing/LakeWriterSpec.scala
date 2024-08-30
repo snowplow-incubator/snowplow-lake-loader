@@ -19,11 +19,10 @@ import cats.effect.testing.specs2.CatsEffect
 import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql.Row
 
-import com.snowplowanalytics.snowplow.runtime.HealthProbe
+import com.snowplowanalytics.snowplow.runtime.{AppHealth, Retrying}
 import com.snowplowanalytics.snowplow.lakes._
-import com.snowplowanalytics.snowplow.sources.{EventProcessingConfig, EventProcessor, SourceAndAck}
 
-import scala.concurrent.duration.{DurationLong, FiniteDuration}
+import scala.concurrent.duration.DurationLong
 
 class LakeWriterSpec extends Specification with CatsEffect {
   import LakeWriterSpec._
@@ -42,27 +41,22 @@ class LakeWriterSpec extends Specification with CatsEffect {
   def e1 =
     control().flatMap { c =>
       val expected = Vector(
-        Action.CreateTableAttempted
+        Action.CreateTableAttempted,
+        Action.BecameHealthy(RuntimeService.SparkWriter),
+        Action.BecameHealthyForSetup
       )
 
       val wrappedLakeWriter = LakeWriter.withHandledErrors(
         c.lakeWriter,
         c.appHealth,
-        c.monitoring,
         retriesConfig,
         dummyDestinationSetupErrorCheck
       )
 
       for {
-        healthBefore <- c.appHealth.status
         _ <- wrappedLakeWriter.createTable
-        healthAfter <- c.appHealth.status
         state <- c.state.get
-      } yield List(
-        state should beEqualTo(expected),
-        healthBefore should beAnInstanceOf[HealthProbe.Unhealthy],
-        healthAfter should beEqualTo(HealthProbe.Healthy)
-      ).reduce(_ and _)
+      } yield state should beEqualTo(expected)
     }
 
   def e2 = {
@@ -82,23 +76,16 @@ class LakeWriterSpec extends Specification with CatsEffect {
       val wrappedLakeWriter = LakeWriter.withHandledErrors(
         c.lakeWriter,
         c.appHealth,
-        c.monitoring,
         retriesConfig,
-        _ => Some("this is a setup error")
+        _ => "this is a setup error"
       )
 
       val test = for {
-        healthBefore <- c.appHealth.status
         fiber <- wrappedLakeWriter.createTable.voidError.start
         _ <- IO.sleep(4.minutes)
         _ <- fiber.cancel
-        healthAfter <- c.appHealth.status
         state <- c.state.get
-      } yield List(
-        state should beEqualTo(expected),
-        healthBefore should beUnhealthy,
-        healthAfter should beUnhealthy
-      ).reduce(_ and _)
+      } yield state should beEqualTo(expected)
 
       TestControl.executeEmbed(test)
     }
@@ -109,30 +96,28 @@ class LakeWriterSpec extends Specification with CatsEffect {
     control(mocks).flatMap { c =>
       val expected = Vector(
         Action.CreateTableAttempted,
+        Action.BecameUnhealthy(RuntimeService.SparkWriter),
         Action.CreateTableAttempted,
+        Action.BecameUnhealthy(RuntimeService.SparkWriter),
         Action.CreateTableAttempted,
+        Action.BecameUnhealthy(RuntimeService.SparkWriter),
         Action.CreateTableAttempted,
-        Action.CreateTableAttempted
+        Action.BecameUnhealthy(RuntimeService.SparkWriter),
+        Action.CreateTableAttempted,
+        Action.BecameUnhealthy(RuntimeService.SparkWriter)
       )
 
       val wrappedLakeWriter = LakeWriter.withHandledErrors(
         c.lakeWriter,
         c.appHealth,
-        c.monitoring,
         retriesConfig,
         dummyDestinationSetupErrorCheck
       )
 
       val test = for {
-        healthBefore <- c.appHealth.status
         _ <- wrappedLakeWriter.createTable.voidError
-        healthAfter <- c.appHealth.status
         state <- c.state.get
-      } yield List(
-        state should beEqualTo(expected),
-        healthBefore should beUnhealthy,
-        healthAfter should beUnhealthy
-      ).reduce(_ and _)
+      } yield state should beEqualTo(expected)
 
       TestControl.executeEmbed(test)
     }
@@ -144,27 +129,22 @@ class LakeWriterSpec extends Specification with CatsEffect {
       val expected = Vector(
         Action.CreateTableAttempted,
         Action.SentAlert(0L),
-        Action.CreateTableAttempted
+        Action.CreateTableAttempted,
+        Action.BecameHealthy(RuntimeService.SparkWriter),
+        Action.BecameHealthyForSetup
       )
 
       val wrappedLakeWriter = LakeWriter.withHandledErrors(
         c.lakeWriter,
         c.appHealth,
-        c.monitoring,
         retriesConfig,
-        _ => Some("this is a setup error")
+        _ => "this is a setup error"
       )
 
       val test = for {
-        healthBefore <- c.appHealth.status
         _ <- wrappedLakeWriter.createTable.voidError
-        healthAfter <- c.appHealth.status
         state <- c.state.get
-      } yield List(
-        state should beEqualTo(expected),
-        healthBefore should beUnhealthy,
-        healthAfter should beHealthy
-      ).reduce(_ and _)
+      } yield state should beEqualTo(expected)
 
       TestControl.executeEmbed(test)
     }
@@ -175,27 +155,23 @@ class LakeWriterSpec extends Specification with CatsEffect {
     control(mocks).flatMap { c =>
       val expected = Vector(
         Action.CreateTableAttempted,
-        Action.CreateTableAttempted
+        Action.BecameUnhealthy(RuntimeService.SparkWriter),
+        Action.CreateTableAttempted,
+        Action.BecameHealthy(RuntimeService.SparkWriter),
+        Action.BecameHealthyForSetup
       )
 
       val wrappedLakeWriter = LakeWriter.withHandledErrors(
         c.lakeWriter,
         c.appHealth,
-        c.monitoring,
         retriesConfig,
         dummyDestinationSetupErrorCheck
       )
 
       val test = for {
-        healthBefore <- c.appHealth.status
         _ <- wrappedLakeWriter.createTable.voidError
-        healthAfter <- c.appHealth.status
         state <- c.state.get
-      } yield List(
-        state should beEqualTo(expected),
-        healthBefore should beUnhealthy,
-        healthAfter should beHealthy
-      ).reduce(_ and _)
+      } yield state should beEqualTo(expected)
 
       TestControl.executeEmbed(test)
     }
@@ -204,27 +180,21 @@ class LakeWriterSpec extends Specification with CatsEffect {
   def e6 =
     control().flatMap { c =>
       val expected = Vector(
-        Action.CommitAttempted("testview")
+        Action.CommitAttempted("testview"),
+        Action.BecameHealthy(RuntimeService.SparkWriter)
       )
 
       val wrappedLakeWriter = LakeWriter.withHandledErrors(
         c.lakeWriter,
         c.appHealth,
-        c.monitoring,
         retriesConfig,
         dummyDestinationSetupErrorCheck
       )
 
       for {
-        healthBefore <- c.appHealth.status
         _ <- wrappedLakeWriter.commit("testview")
-        healthAfter <- c.appHealth.status
         state <- c.state.get
-      } yield List(
-        state should beEqualTo(expected),
-        healthBefore should beAnInstanceOf[HealthProbe.Unhealthy],
-        healthAfter should beEqualTo(HealthProbe.Healthy)
-      ).reduce(_ and _)
+      } yield state should beEqualTo(expected)
     }
 
   def e7 = {
@@ -233,47 +203,24 @@ class LakeWriterSpec extends Specification with CatsEffect {
     control(mocks).flatMap { c =>
       val expected = Vector(
         Action.CommitAttempted("testview1"),
-        Action.CommitAttempted("testview2")
+        Action.BecameHealthy(RuntimeService.SparkWriter),
+        Action.CommitAttempted("testview2"),
+        Action.BecameUnhealthy(RuntimeService.SparkWriter)
       )
 
       val wrappedLakeWriter = LakeWriter.withHandledErrors(
         c.lakeWriter,
         c.appHealth,
-        c.monitoring,
         retriesConfig,
         dummyDestinationSetupErrorCheck
       )
 
       for {
         _ <- wrappedLakeWriter.commit("testview1")
-        healthAfterFirst <- c.appHealth.status
         _ <- wrappedLakeWriter.commit("testview2").voidError
-        healthAfterSecond <- c.appHealth.status
         state <- c.state.get
-      } yield List(
-        state should beEqualTo(expected),
-        healthAfterFirst should beEqualTo(HealthProbe.Healthy),
-        healthAfterSecond should beAnInstanceOf[HealthProbe.Unhealthy]
-      ).reduce(_ and _)
+      } yield state should beEqualTo(expected)
     }
-  }
-
-  /** Convenience matchers for health probe * */
-
-  def beHealthy: org.specs2.matcher.Matcher[HealthProbe.Status] = { (status: HealthProbe.Status) =>
-    val result = status match {
-      case HealthProbe.Healthy      => true
-      case HealthProbe.Unhealthy(_) => false
-    }
-    (result, s"$status is not healthy")
-  }
-
-  def beUnhealthy: org.specs2.matcher.Matcher[HealthProbe.Status] = { (status: HealthProbe.Status) =>
-    val result = status match {
-      case HealthProbe.Healthy      => false
-      case HealthProbe.Unhealthy(_) => true
-    }
-    (result, s"$status is not unhealthy")
   }
 
 }
@@ -285,6 +232,9 @@ object LakeWriterSpec {
     case object CreateTableAttempted extends Action
     case class CommitAttempted(viewName: String) extends Action
     case class SentAlert(timeSentSeconds: Long) extends Action
+    case class BecameUnhealthy(service: RuntimeService) extends Action
+    case class BecameHealthy(service: RuntimeService) extends Action
+    case object BecameHealthyForSetup extends Action
   }
 
   sealed trait Response
@@ -298,44 +248,36 @@ object LakeWriterSpec {
   case class Control(
     state: Ref[IO, Vector[Action]],
     lakeWriter: LakeWriter[IO],
-    appHealth: AppHealth[IO],
-    monitoring: Monitoring[IO]
+    appHealth: AppHealth.Interface[IO, Alert, RuntimeService]
   )
 
   val retriesConfig = Config.Retries(
-    Config.SetupErrorRetries(30.seconds),
-    Config.TransientErrorRetries(1.second, 5)
+    Retrying.Config.ForSetup(30.seconds),
+    Retrying.Config.ForTransient(1.second, 5)
   )
 
   def control(mocks: Mocks = Mocks(Nil)): IO[Control] =
     for {
       state <- Ref[IO].of(Vector.empty[Action])
-      appHealth <- testAppHealth
       tableManager <- testLakeWriter(state, mocks.lakeWriterResults)
-    } yield Control(state, tableManager, appHealth, testMonitoring(state))
+    } yield Control(state, tableManager, testAppHealth(state))
 
-  private def testAppHealth: IO[AppHealth[IO]] = {
-    val healthySource = new SourceAndAck[IO] {
-      override def stream(config: EventProcessingConfig, processor: EventProcessor[IO]): fs2.Stream[IO, Nothing] =
-        fs2.Stream.empty
-
-      override def isHealthy(maxAllowedProcessingLatency: FiniteDuration): IO[SourceAndAck.HealthStatus] =
-        IO(SourceAndAck.Healthy)
+  private def testAppHealth(state: Ref[IO, Vector[Action]]): AppHealth.Interface[IO, Alert, RuntimeService] =
+    new AppHealth.Interface[IO, Alert, RuntimeService] {
+      def beHealthyForSetup: IO[Unit] =
+        state.update(_ :+ Action.BecameHealthyForSetup)
+      def beUnhealthyForSetup(alert: Alert): IO[Unit] =
+        for {
+          now <- IO.realTime
+          _ <- state.update(_ :+ Action.SentAlert(now.toSeconds))
+        } yield ()
+      def beHealthyForRuntimeService(service: RuntimeService): IO[Unit] =
+        state.update(_ :+ Action.BecameHealthy(service))
+      def beUnhealthyForRuntimeService(service: RuntimeService): IO[Unit] =
+        state.update(_ :+ Action.BecameUnhealthy(service))
     }
-    AppHealth.init(10.seconds, healthySource).flatTap { appHealth =>
-      appHealth.setServiceHealth(AppHealth.Service.BadSink, isHealthy = true)
-    }
-  }
 
-  private def testMonitoring(state: Ref[IO, Vector[Action]]): Monitoring[IO] = new Monitoring[IO] {
-    def alert(message: Alert): IO[Unit] =
-      for {
-        now <- IO.realTime
-        _ <- state.update(_ :+ Action.SentAlert(now.toSeconds))
-      } yield ()
-  }
-
-  private val dummyDestinationSetupErrorCheck: Throwable => Option[String] = _ => None
+  private val dummyDestinationSetupErrorCheck: PartialFunction[Throwable, String] = PartialFunction.empty
 
   private def testLakeWriter(state: Ref[IO, Vector[Action]], mocks: List[Response]): IO[LakeWriter[IO]] =
     for {

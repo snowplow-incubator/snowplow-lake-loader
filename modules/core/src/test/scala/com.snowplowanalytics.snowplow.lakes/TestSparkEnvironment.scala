@@ -22,7 +22,7 @@ import com.snowplowanalytics.iglu.client.Resolver
 import com.snowplowanalytics.snowplow.sources.{EventProcessingConfig, EventProcessor, SourceAndAck, TokenedEvents}
 import com.snowplowanalytics.snowplow.sinks.Sink
 import com.snowplowanalytics.snowplow.lakes.processing.LakeWriter
-import com.snowplowanalytics.snowplow.runtime.AppInfo
+import com.snowplowanalytics.snowplow.runtime.{AppHealth, AppInfo, Retrying}
 
 object TestSparkEnvironment {
 
@@ -33,10 +33,8 @@ object TestSparkEnvironment {
   ): Resource[IO, Environment[IO]] = for {
     testConfig <- Resource.pure(TestConfig.defaults(target, tmpDir))
     source = testSourceAndAck(windows)
-    appHealth <- Resource.eval(AppHealth.init(10.seconds, source))
-    _ <- Resource.eval(appHealth.setServiceHealth(AppHealth.Service.BadSink, isHealthy = true))
     lakeWriter <- LakeWriter.build[IO](testConfig.spark, testConfig.output.good)
-    lakeWriterWrapped = LakeWriter.withHandledErrors(lakeWriter, appHealth, dummyMonitoring, retriesConfig, _ => None)
+    lakeWriterWrapped = LakeWriter.withHandledErrors(lakeWriter, dummyAppHealth, retriesConfig, PartialFunction.empty)
   } yield Environment(
     appInfo                = appInfo,
     source                 = source,
@@ -45,7 +43,7 @@ object TestSparkEnvironment {
     httpClient             = testHttpClient,
     lakeWriter             = lakeWriterWrapped,
     metrics                = testMetrics,
-    appHealth              = appHealth,
+    appHealth              = dummyAppHealth,
     inMemBatchBytes        = 1000000L,
     cpuParallelism         = 1,
     windowing              = EventProcessingConfig.TimedWindows(1.minute, 1.0, 1),
@@ -55,13 +53,9 @@ object TestSparkEnvironment {
   )
 
   private val retriesConfig = Config.Retries(
-    Config.SetupErrorRetries(30.seconds),
-    Config.TransientErrorRetries(1.second, 5)
+    Retrying.Config.ForSetup(30.seconds),
+    Retrying.Config.ForTransient(1.second, 5)
   )
-
-  private val dummyMonitoring = new Monitoring[IO] {
-    override def alert(message: Alert): IO[Unit] = IO.unit
-  }
 
   private def testSourceAndAck(windows: List[List[TokenedEvents]]): SourceAndAck[IO] =
     new SourceAndAck[IO] {
@@ -95,6 +89,17 @@ object TestSparkEnvironment {
     def setLatency(latency: FiniteDuration): IO[Unit]           = IO.unit
     def setProcessingLatency(latency: FiniteDuration): IO[Unit] = IO.unit
     def report: Stream[IO, Nothing]                             = Stream.never[IO]
+  }
+
+  def dummyAppHealth: AppHealth.Interface[IO, Any, Any] = new AppHealth.Interface[IO, Any, Any] {
+    def beHealthyForSetup: IO[Unit] =
+      IO.unit
+    def beUnhealthyForSetup(alert: Any): IO[Unit] =
+      IO.unit
+    def beHealthyForRuntimeService(service: Any): IO[Unit] =
+      IO.unit
+    def beUnhealthyForRuntimeService(service: Any): IO[Unit] =
+      IO.unit
   }
 
 }
