@@ -22,6 +22,7 @@ import org.apache.spark.sql.types.StructType
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
 import com.snowplowanalytics.iglu.client.Resolver
+import com.snowplowanalytics.snowplow.runtime.AppHealth
 import com.snowplowanalytics.snowplow.sources.{EventProcessingConfig, EventProcessor, SourceAndAck, TokenedEvents}
 import com.snowplowanalytics.snowplow.sinks.Sink
 import com.snowplowanalytics.snowplow.lakes.processing.LakeWriter
@@ -53,6 +54,10 @@ object MockEnvironment {
     case class AddedCommittedCountMetric(count: Int) extends Action
     case class SetLatencyMetric(latency: FiniteDuration) extends Action
     case class SetProcessingLatencyMetric(latency: FiniteDuration) extends Action
+
+    /* Health */
+    case class BecameUnhealthy(service: RuntimeService) extends Action
+    case class BecameHealthy(service: RuntimeService) extends Action
   }
   import Action._
 
@@ -69,8 +74,6 @@ object MockEnvironment {
     for {
       state <- Ref[IO].of(Vector.empty[Action])
       source = testSourceAndAck(windows, state)
-      appHealth <- AppHealth.init(10.seconds, source)
-      _ <- appHealth.setServiceHealth(AppHealth.Service.BadSink, isHealthy = true)
     } yield {
       val env = Environment(
         appInfo                = TestSparkEnvironment.appInfo,
@@ -80,7 +83,7 @@ object MockEnvironment {
         httpClient             = testHttpClient,
         lakeWriter             = testLakeWriter(state),
         metrics                = testMetrics(state),
-        appHealth              = appHealth,
+        appHealth              = testAppHealth(state),
         inMemBatchBytes        = 1000000L,
         cpuParallelism         = 1,
         windowing              = EventProcessingConfig.TimedWindows(1.minute, 1.0, 1),
@@ -158,4 +161,16 @@ object MockEnvironment {
 
     def report: Stream[IO, Nothing] = Stream.never[IO]
   }
+
+  private def testAppHealth(ref: Ref[IO, Vector[Action]]): AppHealth.Interface[IO, Alert, RuntimeService] =
+    new AppHealth.Interface[IO, Alert, RuntimeService] {
+      def beHealthyForSetup: IO[Unit] =
+        IO.unit
+      def beUnhealthyForSetup(alert: Alert): IO[Unit] =
+        IO.unit
+      def beHealthyForRuntimeService(service: RuntimeService): IO[Unit] =
+        ref.update(_ :+ BecameHealthy(service))
+      def beUnhealthyForRuntimeService(service: RuntimeService): IO[Unit] =
+        ref.update(_ :+ BecameUnhealthy(service))
+    }
 }

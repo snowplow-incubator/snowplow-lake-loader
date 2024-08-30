@@ -17,7 +17,8 @@ import cats.effect.std.Mutex
 import org.apache.spark.sql.{Row, SparkSession}
 import org.apache.spark.sql.types.StructType
 
-import com.snowplowanalytics.snowplow.lakes.{Alert, AppHealth, Config, DestinationSetupErrorCheck, Monitoring}
+import com.snowplowanalytics.snowplow.runtime.{AppHealth, Retrying}
+import com.snowplowanalytics.snowplow.lakes.{Alert, Config, DestinationSetupErrorCheck, RuntimeService}
 import com.snowplowanalytics.snowplow.lakes.tables.{DeltaWriter, HudiWriter, IcebergWriter, Writer}
 
 trait LakeWriter[F[_]] {
@@ -88,15 +89,21 @@ object LakeWriter {
 
   def withHandledErrors[F[_]: Async](
     underlying: LakeWriter[F],
-    appHealth: AppHealth[F],
-    monitoring: Monitoring[F],
+    appHealth: AppHealth.Interface[F, Alert, RuntimeService],
     retries: Config.Retries,
     destinationSetupErrorCheck: DestinationSetupErrorCheck
   ): WithHandledErrors[F] = new WithHandledErrors[F] {
     def createTable: F[Unit] =
-      Retrying.withRetries(appHealth, retries, monitoring, Alert.FailedToCreateEventsTable, destinationSetupErrorCheck) {
+      Retrying.withRetries(
+        appHealth,
+        retries.transientErrors,
+        retries.setupErrors,
+        RuntimeService.SparkWriter,
+        Alert.FailedToCreateEventsTable,
+        destinationSetupErrorCheck
+      ) {
         underlying.createTable
-      }
+      } <* appHealth.beHealthyForSetup
 
     def initializeLocalDataFrame(viewName: String): F[Unit] =
       underlying.initializeLocalDataFrame(viewName)
@@ -115,8 +122,8 @@ object LakeWriter {
       underlying
         .commit(viewName)
         .onError { case _ =>
-          appHealth.setServiceHealth(AppHealth.Service.SparkWriter, isHealthy = false)
-        } <* appHealth.setServiceHealth(AppHealth.Service.SparkWriter, isHealthy = true)
+          appHealth.beUnhealthyForRuntimeService(RuntimeService.SparkWriter)
+        } <* appHealth.beHealthyForRuntimeService(RuntimeService.SparkWriter)
   }
 
   /**

@@ -31,7 +31,7 @@ import com.snowplowanalytics.snowplow.badrows.{BadRow, Processor => BadRowProces
 import com.snowplowanalytics.snowplow.badrows.Payload.{RawPayload => BadRowRawPayload}
 import com.snowplowanalytics.snowplow.sources.{EventProcessingConfig, EventProcessor, TokenedEvents}
 import com.snowplowanalytics.snowplow.sinks.ListOfList
-import com.snowplowanalytics.snowplow.lakes.{AppHealth, Environment, Metrics}
+import com.snowplowanalytics.snowplow.lakes.{Environment, Metrics, RuntimeService}
 import com.snowplowanalytics.snowplow.runtime.processing.BatchUp
 import com.snowplowanalytics.snowplow.runtime.syntax.foldable._
 import com.snowplowanalytics.snowplow.loaders.transform.{
@@ -253,7 +253,7 @@ object Processing {
         env.badSink
           .sinkSimple(ListOfList.of(List(serialized)))
           .onError { case _ =>
-            env.appHealth.setServiceHealth(AppHealth.Service.BadSink, isHealthy = false)
+            env.appHealth.beUnhealthyForRuntimeService(RuntimeService.BadSink)
           }
     } else Applicative[F].unit
 

@@ -15,11 +15,9 @@ import org.apache.hudi.hive.HoodieHiveSyncException
 object TableFormatSetupError {
 
   // Check if given exception is specific to hudi format
-  def check: Throwable => Option[String] = {
+  def check: PartialFunction[Throwable, String] = {
     case e: HoodieHiveSyncException if e.getMessage.contains("database does not exist") =>
       // Glue database does not exist or no permission to see it
-      Some(e.getMessage)
-    case _ =>
-      None
+      e.getMessage
   }
 }

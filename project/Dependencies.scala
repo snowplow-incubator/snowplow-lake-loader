@@ -26,7 +26,6 @@ object Dependencies {
 
     // Scala
     val catsEffect       = "3.5.4"
-    val catsRetry        = "3.1.3"
     val decline          = "2.4.1"
     val circe            = "0.14.3"
     val http4s           = "0.23.16"
@@ -51,7 +50,7 @@ object Dependencies {
     val awsRegistry = "1.1.20"
 
     // Snowplow
-    val streams    = "0.7.0"
+    val streams    = "0.8.0-M2"
     val igluClient = "3.0.0"
 
     // Transitive overrides
@@ -72,11 +71,10 @@ object Dependencies {
 
   }
 
-  val catsRetry         = "com.github.cb372" %% "cats-retry"           % V.catsRetry
-  val blazeClient       = "org.http4s"       %% "http4s-blaze-client"  % V.http4s
-  val decline           = "com.monovore"     %% "decline-effect"       % V.decline
-  val circeGenericExtra = "io.circe"         %% "circe-generic-extras" % V.circe
-  val betterMonadicFor  = "com.olegpy"       %% "better-monadic-for"   % V.betterMonadicFor
+  val blazeClient       = "org.http4s"   %% "http4s-blaze-client"  % V.http4s
+  val decline           = "com.monovore" %% "decline-effect"       % V.decline
+  val circeGenericExtra = "io.circe"     %% "circe-generic-extras" % V.circe
+  val betterMonadicFor  = "com.olegpy"   %% "better-monadic-for"   % V.betterMonadicFor
 
   object Spark {
     val coreForIcebergDelta = "org.apache.spark" %% "spark-core" % V.Spark.forIcebergDelta
@@ -150,7 +148,6 @@ object Dependencies {
     streamsCore,
     loaders,
     runtime,
-    catsRetry,
     delta                     % Provided,
     Spark.coreForIcebergDelta % Provided,
     Spark.sqlForIcebergDelta  % Provided,

@@ -41,27 +41,27 @@ object AwsApp extends LoaderApp[KinesisSourceConfig, KinesisSinkConfig](BuildInf
    */
   override def isDestinationSetupError: DestinationSetupErrorCheck = {
 
-    /** Exceptions raised by underlying AWS SDK * */
+    // Exceptions raised by underlying AWS SDK
     case _: NoSuchBucketException =>
       // S3 bucket does not exist
-      Some("S3 bucket does not exist or we do not have permissions to see it exists")
+      "S3 bucket does not exist or we do not have permissions to see it exists"
     case e: S3Exception if e.statusCode() === 403 =>
       // No permission to read from S3 bucket or to write to S3 bucket
-      Some("Missing permissions to perform this action on S3 bucket")
+      "Missing permissions to perform this action on S3 bucket"
     case e: S3Exception if e.statusCode() === 301 =>
       // Misconfigured AWS region
-      Some("S3 bucket is not in the expected region")
+      "S3 bucket is not in the expected region"
     case e: GlueAccessDeniedException =>
       // No permission to read from Glue catalog
-      Some(Option(e.getMessage).getOrElse("Missing permissions to perform this action on Glue catalog"))
+      Option(e.getMessage).getOrElse("Missing permissions to perform this action on Glue catalog")
     case _: GlueEntityNotFoundException =>
       // Glue database does not exist
-      Some("Glue resource does not exist or no permission to see it exists")
+      "Glue resource does not exist or no permission to see it exists"
     case e: StsException if e.statusCode() === 403 =>
       // No permission to assume the role given to authenticate to S3/Glue
-      Some("Missing permissions to assume the AWS IAM role")
+      "Missing permissions to assume the AWS IAM role"
 
-    /** Exceptions raised via hadoop's s3a filesystem * */
+    // Exceptions raised via hadoop's s3a filesystem
     case e: UnknownStoreException =>
       // S3 bucket does not exist or no permission to see it exists
       stripCauseDetails(e)
@@ -70,10 +70,11 @@ object AwsApp extends LoaderApp[KinesisSourceConfig, KinesisSinkConfig](BuildInf
       // 2 - No permission to assume the role given to authenticate to S3
       stripCauseDetails(e)
     case _: CredentialInitializationException =>
-      Some("Failed to initialize AWS access credentials")
+      "Failed to initialize AWS access credentials"
 
-    /** Exceptions common to the table format - Delta/Iceberg/Hudi * */
-    case t => TableFormatSetupError.check(t)
+    // Exceptions common to the table format - Delta/Iceberg/Hudi
+    case TableFormatSetupError.check(t) =>
+      t
   }
 
   /**
@@ -86,13 +87,12 @@ object AwsApp extends LoaderApp[KinesisSourceConfig, KinesisSinkConfig](BuildInf
    * In order to have better control of the message sent to the webhook, we remove the cause details
    * here, and add back in pertinent cause information later.
    */
-  private def stripCauseDetails(t: Throwable): Option[String] =
-    (Option(t.getMessage), Option(t.getCause)) match {
-      case (Some(message), Some(cause)) =>
+  private def stripCauseDetails(t: Throwable): String =
+    Option(t.getCause) match {
+      case Some(cause) =>
         val toRemove = new Regex(":? *" + Regex.quote(cause.toString) + ".*")
-        val replaced = toRemove.replaceAllIn(message, "")
-        Some(replaced)
-      case (other, _) =>
-        other
+        toRemove.replaceAllIn(t.getMessage, "")
+      case None =>
+        t.getMessage
     }
 }

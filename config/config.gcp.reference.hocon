@@ -228,7 +228,7 @@
       }
     }
 
-    # -- Report alerts to the webhook
+    # -- Report alerts and heartbeats to the webhook 
     "webhook": {
       # An actual HTTP endpoint
       "endpoint": "https://webhook.acme.com",
@@ -236,6 +236,8 @@
       "tags": {
         "pipeline": "production"
       }
+      # How often to send the heartbeat event
+      "heartbeat": "60.minutes"
     }
 
     # -- Open a HTTP server that returns OK only if the app is healthy
