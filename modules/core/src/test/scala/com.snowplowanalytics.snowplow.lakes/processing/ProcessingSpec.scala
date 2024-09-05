@@ -10,23 +10,22 @@
 
 package com.snowplowanalytics.snowplow.lakes.processing
 
+import cats.implicits._
 import cats.effect.IO
-import fs2.{Chunk, Stream}
 import org.specs2.Specification
 import cats.effect.testing.specs2.CatsEffect
+import io.circe.Json
 import cats.effect.testkit.TestControl
 
-import java.nio.charset.StandardCharsets
 import java.time.Instant
 import scala.concurrent.duration.DurationLong
 
-import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
-import com.snowplowanalytics.snowplow.lakes.MockEnvironment
+import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer, SelfDescribingData}
+import com.snowplowanalytics.snowplow.analytics.scalasdk.SnowplowEvent
+import com.snowplowanalytics.snowplow.lakes.{MockEnvironment, RuntimeService}
 import com.snowplowanalytics.snowplow.lakes.MockEnvironment.Action
-import com.snowplowanalytics.snowplow.sources.TokenedEvents
 
 class ProcessingSpec extends Specification with CatsEffect {
-  import ProcessingSpec._
 
   def is = s2"""
   The lake loader should:
@@ -36,12 +35,16 @@ class ProcessingSpec extends Specification with CatsEffect {
     Write multiple batches in a single window when batch exceeds cutoff $e4
     Write good batches and bad events when a window contains both $e5
     Set the latency metric based off the message timestamp $e6
+    Load events with a known schema $e7
+    Send failed events for an unrecognized schema $e8
+    Crash and exit for an unrecognized schema, if exitOnMissingIgluSchema is true $e9
   """
 
   def e1 = {
     val io = for {
-      inputs <- generateEvents.take(2).compile.toList
-      control <- MockEnvironment.build(List(inputs))
+      inputs <- EventUtils.inputEvents(2, EventUtils.good())
+      tokened <- inputs.traverse(_.tokened)
+      control <- MockEnvironment.build(List(tokened))
       _ <- Processing.stream(control.environment).compile.drain
       state <- control.state.get
     } yield state should beEqualTo(
@@ -55,7 +58,7 @@ class ProcessingSpec extends Specification with CatsEffect {
         Action.CommittedToTheLake("v19700101000010"),
         Action.AddedCommittedCountMetric(4),
         Action.SetProcessingLatencyMetric(MockEnvironment.WindowDuration),
-        Action.Checkpointed(inputs.map(_.ack)),
+        Action.Checkpointed(tokened.map(_.ack)),
         Action.RemovedDataFrameFromDisk("v19700101000010")
       )
     )
@@ -65,8 +68,8 @@ class ProcessingSpec extends Specification with CatsEffect {
 
   def e2 = {
     val io = for {
-      inputs <- generateBadlyFormatted.take(3).compile.toList
-      control <- MockEnvironment.build(List(inputs))
+      tokened <- List.fill(3)(EventUtils.badlyFormatted).sequence
+      control <- MockEnvironment.build(List(tokened))
       _ <- Processing.stream(control.environment).compile.drain
       state <- control.state.get
     } yield state should beEqualTo(
@@ -83,7 +86,7 @@ class ProcessingSpec extends Specification with CatsEffect {
         Action.AddedReceivedCountMetric(2),
         Action.AddedBadCountMetric(2),
         Action.SentToBad(2),
-        Action.Checkpointed(inputs.map(_.ack)),
+        Action.Checkpointed(tokened.map(_.ack)),
         Action.RemovedDataFrameFromDisk("v19700101000010")
       )
     )
@@ -93,9 +96,12 @@ class ProcessingSpec extends Specification with CatsEffect {
 
   def e3 = {
     val io = for {
-      window1 <- generateEvents.take(1).compile.toList
-      window2 <- generateEvents.take(3).compile.toList
-      window3 <- generateEvents.take(2).compile.toList
+      inputs1 <- EventUtils.inputEvents(1, EventUtils.good())
+      window1 <- inputs1.traverse(_.tokened)
+      inputs2 <- EventUtils.inputEvents(3, EventUtils.good())
+      window2 <- inputs2.traverse(_.tokened)
+      inputs3 <- EventUtils.inputEvents(2, EventUtils.good())
+      window3 <- inputs3.traverse(_.tokened)
       control <- MockEnvironment.build(List(window1, window2, window3))
       _ <- Processing.stream(control.environment).compile.drain
       state <- control.state.get
@@ -144,8 +150,9 @@ class ProcessingSpec extends Specification with CatsEffect {
 
   def e4 = {
     val io = for {
-      inputs <- generateEvents.take(3).compile.toList
-      control <- MockEnvironment.build(List(inputs))
+      inputs <- EventUtils.inputEvents(3, EventUtils.good())
+      tokened <- inputs.traverse(_.tokened)
+      control <- MockEnvironment.build(List(tokened))
       environment = control.environment.copy(inMemBatchBytes = 1L) // Drop the allowed max bytes
       _ <- Processing.stream(environment).compile.drain
       state <- control.state.get
@@ -163,7 +170,7 @@ class ProcessingSpec extends Specification with CatsEffect {
         Action.CommittedToTheLake("v19700101000010"),
         Action.AddedCommittedCountMetric(6),
         Action.SetProcessingLatencyMetric(MockEnvironment.WindowDuration),
-        Action.Checkpointed(inputs.map(_.ack)),
+        Action.Checkpointed(tokened.map(_.ack)),
         Action.RemovedDataFrameFromDisk("v19700101000010")
       )
     )
@@ -173,10 +180,10 @@ class ProcessingSpec extends Specification with CatsEffect {
 
   def e5 = {
     val io = for {
-      bads1 <- generateBadlyFormatted.take(3).compile.toList
-      goods1 <- generateEvents.take(3).compile.toList
-      bads2 <- generateBadlyFormatted.take(1).compile.toList
-      goods2 <- generateEvents.take(1).compile.toList
+      bads1 <- List.fill(3)(EventUtils.badlyFormatted).sequence
+      goods1 <- EventUtils.inputEvents(3, EventUtils.good()).flatMap(_.traverse(_.tokened))
+      bads2 <- List.fill(1)(EventUtils.badlyFormatted).sequence
+      goods2 <- EventUtils.inputEvents(1, EventUtils.good()).flatMap(_.traverse(_.tokened))
       control <- MockEnvironment.build(List(bads1 ::: goods1 ::: bads2 ::: goods2))
       _ <- Processing.stream(control.environment).compile.drain
       state <- control.state.get
@@ -218,12 +225,13 @@ class ProcessingSpec extends Specification with CatsEffect {
     val processTime = Instant.parse("2023-10-24T10:00:42.123Z").minusMillis(MockEnvironment.TimeTakenToCreateTable.toMillis)
 
     val io = for {
-      inputs <- generateEvents.take(2).compile.toList.map {
-                  _.map {
-                    _.copy(earliestSourceTstamp = Some(messageTime))
-                  }
-                }
-      control <- MockEnvironment.build(List(inputs))
+      inputs <- EventUtils.inputEvents(2, EventUtils.good())
+      tokened <- inputs.traverse(_.tokened).map {
+                   _.map {
+                     _.copy(earliestSourceTstamp = Some(messageTime))
+                   }
+                 }
+      control <- MockEnvironment.build(List(tokened))
       _ <- IO.sleep(processTime.toEpochMilli.millis)
       _ <- Processing.stream(control.environment).compile.drain
       state <- control.state.get
@@ -240,40 +248,122 @@ class ProcessingSpec extends Specification with CatsEffect {
         Action.CommittedToTheLake("v20231024100042"),
         Action.AddedCommittedCountMetric(4),
         Action.SetProcessingLatencyMetric(MockEnvironment.WindowDuration),
-        Action.Checkpointed(inputs.map(_.ack)),
+        Action.Checkpointed(tokened.map(_.ack)),
         Action.RemovedDataFrameFromDisk("v20231024100042")
       )
     )
 
     TestControl.executeEmbed(io)
   }
-}
 
-object ProcessingSpec {
+  def e7 = {
 
-  def generateEvents: Stream[IO, TokenedEvents] =
-    Stream.eval {
-      for {
-        ack <- IO.unique
-        eventId1 <- IO.randomUUID
-        eventId2 <- IO.randomUUID
-        collectorTstamp <- IO.realTimeInstant
-      } yield {
-        val event1 = Event.minimal(eventId1, collectorTstamp, "0.0.0", "0.0.0")
-        val event2 = Event.minimal(eventId2, collectorTstamp, "0.0.0", "0.0.0")
-        val serialized = Chunk(event1, event2).map { e =>
-          StandardCharsets.UTF_8.encode(e.toTsv)
-        }
-        TokenedEvents(serialized, ack, None)
-      }
-    }.repeat
+    val ueGood700 = SnowplowEvent.UnstructEvent(
+      Some(
+        SelfDescribingData(
+          SchemaKey("myvendor", "goodschema", "jsonschema", SchemaVer.Full(7, 0, 0)),
+          Json.obj(
+            "col_a" -> Json.fromString("xyz")
+          )
+        )
+      )
+    )
 
-  def generateBadlyFormatted: Stream[IO, TokenedEvents] =
-    Stream.eval {
-      IO.unique.map { token =>
-        val serialized = Chunk("nonsense1", "nonsense2").map(StandardCharsets.UTF_8.encode(_))
-        TokenedEvents(serialized, token, None)
-      }
-    }.repeat
+    val io = for {
+      inputs <- EventUtils.inputEvents(1, EventUtils.good(ue = ueGood700))
+      tokened <- inputs.traverse(_.tokened)
+      control <- MockEnvironment.build(List(tokened))
+      _ <- Processing.stream(control.environment).compile.drain
+      state <- control.state.get
+    } yield state should beEqualTo(
+      Vector(
+        Action.SubscribedToStream,
+        Action.CreatedTable,
+        Action.InitializedLocalDataFrame("v19700101000010"),
+        Action.AddedReceivedCountMetric(2),
+        Action.AppendedRowsToDataFrame("v19700101000010", 2),
+        Action.CommittedToTheLake("v19700101000010"),
+        Action.AddedCommittedCountMetric(2),
+        Action.SetProcessingLatencyMetric(MockEnvironment.WindowDuration),
+        Action.Checkpointed(tokened.map(_.ack)),
+        Action.RemovedDataFrameFromDisk("v19700101000010")
+      )
+    )
+
+    TestControl.executeEmbed(io)
+  }
+
+  def e8 = {
+
+    val ueDoesNotExist = SnowplowEvent.UnstructEvent(
+      Some(
+        SelfDescribingData(
+          SchemaKey("myvendor", "doesnotexit", "jsonschema", SchemaVer.Full(7, 0, 0)),
+          Json.obj(
+            "col_a" -> Json.fromString("xyz")
+          )
+        )
+      )
+    )
+
+    val io = for {
+      inputs <- EventUtils.inputEvents(1, EventUtils.good(ue = ueDoesNotExist))
+      tokened <- inputs.traverse(_.tokened)
+      control <- MockEnvironment.build(List(tokened))
+      _ <- Processing.stream(control.environment).compile.drain
+      state <- control.state.get
+    } yield state should beEqualTo(
+      Vector(
+        Action.SubscribedToStream,
+        Action.CreatedTable,
+        Action.InitializedLocalDataFrame("v19700101000010"),
+        Action.AddedReceivedCountMetric(2),
+        Action.AddedBadCountMetric(1),
+        Action.SentToBad(1),
+        Action.AppendedRowsToDataFrame("v19700101000010", 1),
+        Action.CommittedToTheLake("v19700101000010"),
+        Action.AddedCommittedCountMetric(1),
+        Action.SetProcessingLatencyMetric(MockEnvironment.WindowDuration),
+        Action.Checkpointed(tokened.map(_.ack)),
+        Action.RemovedDataFrameFromDisk("v19700101000010")
+      )
+    )
+
+    TestControl.executeEmbed(io)
+  }
+
+  def e9 = {
+
+    val ueDoesNotExist = SnowplowEvent.UnstructEvent(
+      Some(
+        SelfDescribingData(
+          SchemaKey("myvendor", "doesnotexit", "jsonschema", SchemaVer.Full(7, 0, 0)),
+          Json.obj(
+            "col_a" -> Json.fromString("xyz")
+          )
+        )
+      )
+    )
+
+    val io = for {
+      inputs <- EventUtils.inputEvents(1, EventUtils.good(ue = ueDoesNotExist))
+      tokened <- inputs.traverse(_.tokened)
+      control <- MockEnvironment.build(List(tokened))
+      environment = control.environment.copy(exitOnMissingIgluSchema = true)
+      _ <- Processing.stream(environment).compile.drain.voidError
+      state <- control.state.get
+    } yield state should beEqualTo(
+      Vector(
+        Action.SubscribedToStream,
+        Action.CreatedTable,
+        Action.InitializedLocalDataFrame("v19700101000010"),
+        Action.AddedReceivedCountMetric(2),
+        Action.BecameUnhealthy(RuntimeService.Iglu),
+        Action.RemovedDataFrameFromDisk("v19700101000010")
+      )
+    )
+
+    TestControl.executeEmbed(io)
+  }
 
 }
