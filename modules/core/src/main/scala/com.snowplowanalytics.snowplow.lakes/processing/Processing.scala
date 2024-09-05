@@ -16,6 +16,7 @@ import cats.{Applicative, Foldable, Functor}
 import cats.effect.{Async, Deferred, Sync}
 import cats.effect.kernel.{Ref, Unique}
 import fs2.{Chunk, Pipe, Stream}
+import io.circe.syntax._
 import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 import org.apache.spark.sql.Row
@@ -134,6 +135,7 @@ object Processing {
       for {
         _ <- Logger[F].debug(s"Processing batch of size ${events.size}")
         nonAtomicFields <- NonAtomicFields.resolveTypes[F](env.resolver, entities, env.schemasToSkip)
+        _ <- possiblyExitOnMissingIgluSchema(env, nonAtomicFields)
         _ <- rememberColumnNames(ref, nonAtomicFields.fields)
         (bad, rows) <- transformToSpark[F](badProcessor, events, nonAtomicFields)
         _ <- sendFailedEvents(env, badProcessor, bad)
@@ -277,4 +279,14 @@ object Processing {
 
       Stream.eval(commit) >> Stream.emits(state.tokens.reverse)
     }
+
+  private def possiblyExitOnMissingIgluSchema[F[_]: Sync](env: Environment[F], nonAtomicFields: NonAtomicFields.Result): F[Unit] =
+    if (env.exitOnMissingIgluSchema && nonAtomicFields.igluFailures.nonEmpty) {
+      val base =
+        "Exiting because failed to resolve Iglu schemas.  Either check the configuration of the Iglu repos, or set the `skipSchemas` config option, or set `exitOnMissingIgluSchema` to false.\n"
+      val msg = nonAtomicFields.igluFailures.map(_.failure.asJson.noSpaces).mkString(base, "\n", "")
+      Logger[F].error(base) *> env.appHealth.beUnhealthyForRuntimeService(RuntimeService.Iglu) *> Sync[F].raiseError(
+        new RuntimeException(msg)
+      )
+    } else Applicative[F].unit
 }

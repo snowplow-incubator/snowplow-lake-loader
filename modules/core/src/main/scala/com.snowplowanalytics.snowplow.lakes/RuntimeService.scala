@@ -15,9 +15,11 @@ sealed trait RuntimeService
 object RuntimeService {
   case object SparkWriter extends RuntimeService
   case object BadSink extends RuntimeService
+  case object Iglu extends RuntimeService
 
   implicit val show: Show[RuntimeService] = Show.show {
     case SparkWriter => "Spark writer"
     case BadSink     => "Failed events sink"
+    case Iglu        => "Iglu repositories"
   }
 }

@@ -39,6 +39,7 @@ case class Config[+Source, +Sink](
   license: AcceptedLicense,
   skipSchemas: List[SchemaCriterion],
   respectIgluNullability: Boolean,
+  exitOnMissingIgluSchema: Boolean,
   retries: Config.Retries
 )
 

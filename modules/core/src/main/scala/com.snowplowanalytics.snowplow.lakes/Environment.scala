@@ -53,7 +53,8 @@ case class Environment[F[_]](
   windowing: EventProcessingConfig.TimedWindows,
   badRowMaxSize: Int,
   schemasToSkip: List[SchemaCriterion],
-  respectIgluNullability: Boolean
+  respectIgluNullability: Boolean,
+  exitOnMissingIgluSchema: Boolean
 )
 
 object Environment {
@@ -82,20 +83,21 @@ object Environment {
       metrics <- Resource.eval(Metrics.build(config.main.monitoring.metrics))
       cpuParallelism = chooseCpuParallelism(config.main)
     } yield Environment(
-      appInfo                = appInfo,
-      source                 = sourceAndAck,
-      badSink                = badSink,
-      resolver               = resolver,
-      httpClient             = httpClient,
-      lakeWriter             = lakeWriterWrapped,
-      metrics                = metrics,
-      appHealth              = appHealth,
-      cpuParallelism         = cpuParallelism,
-      inMemBatchBytes        = config.main.inMemBatchBytes,
-      windowing              = windowing,
-      badRowMaxSize          = config.main.output.bad.maxRecordSize,
-      schemasToSkip          = config.main.skipSchemas,
-      respectIgluNullability = config.main.respectIgluNullability
+      appInfo                 = appInfo,
+      source                  = sourceAndAck,
+      badSink                 = badSink,
+      resolver                = resolver,
+      httpClient              = httpClient,
+      lakeWriter              = lakeWriterWrapped,
+      metrics                 = metrics,
+      appHealth               = appHealth,
+      cpuParallelism          = cpuParallelism,
+      inMemBatchBytes         = config.main.inMemBatchBytes,
+      windowing               = windowing,
+      badRowMaxSize           = config.main.output.bad.maxRecordSize,
+      schemasToSkip           = config.main.skipSchemas,
+      respectIgluNullability  = config.main.respectIgluNullability,
+      exitOnMissingIgluSchema = config.main.exitOnMissingIgluSchema
     )
 
   private def enableSentry[F[_]: Sync](appInfo: AppInfo, config: Option[Config.Sentry]): Resource[F, Unit] =

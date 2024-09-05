@@ -76,20 +76,21 @@ object MockEnvironment {
       source = testSourceAndAck(windows, state)
     } yield {
       val env = Environment(
-        appInfo                = TestSparkEnvironment.appInfo,
-        source                 = source,
-        badSink                = testSink(state),
-        resolver               = Resolver[IO](Nil, None),
-        httpClient             = testHttpClient,
-        lakeWriter             = testLakeWriter(state),
-        metrics                = testMetrics(state),
-        appHealth              = testAppHealth(state),
-        inMemBatchBytes        = 1000000L,
-        cpuParallelism         = 1,
-        windowing              = EventProcessingConfig.TimedWindows(1.minute, 1.0, 1),
-        badRowMaxSize          = 1000000,
-        schemasToSkip          = List.empty,
-        respectIgluNullability = true
+        appInfo                 = TestSparkEnvironment.appInfo,
+        source                  = source,
+        badSink                 = testSink(state),
+        resolver                = Resolver[IO](Nil, None),
+        httpClient              = testHttpClient,
+        lakeWriter              = testLakeWriter(state),
+        metrics                 = testMetrics(state),
+        appHealth               = testAppHealth(state),
+        inMemBatchBytes         = 1000000L,
+        cpuParallelism          = 1,
+        windowing               = EventProcessingConfig.TimedWindows(1.minute, 1.0, 1),
+        badRowMaxSize           = 1000000,
+        schemasToSkip           = List.empty,
+        respectIgluNullability  = true,
+        exitOnMissingIgluSchema = false
       )
       MockEnvironment(state, env)
     }
