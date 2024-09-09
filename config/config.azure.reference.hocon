@@ -190,6 +190,13 @@
   # -- Set this to false if you use a query engine that dislikes non-nullable nested fields of a nullable struct.
   "respectIgluNullability": true
 
+  # -- Configuration of internal http client used for iglu resolver, alerts and telemetry
+  "http": {
+    "client": {
+      "maxConnectionsPerServer": 4
+    }
+  }
+
   "monitoring": {
     "metrics": {
 
