@@ -88,8 +88,8 @@ object Processing {
     deferredTableExists: F[Unit]
   ): EventProcessor[F] = { in =>
     val resources = for {
-      _ <- Stream.eval(deferredTableExists)
       windowState <- Stream.eval(WindowState.build[F])
+      _ <- Stream.eval(deferredTableExists)
       stateRef <- Stream.eval(Ref[F].of(windowState))
       _ <- manageDataFrame(env, windowState.viewName)
     } yield stateRef
