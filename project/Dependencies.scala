@@ -129,11 +129,10 @@ object Dependencies {
   val catsEffectSpecs2  = "org.typelevel" %% "cats-effect-testing-specs2" % V.catsEffectSpecs2 % Test
 
   val commonRuntimeDependencies = Seq(
-    hadoopClient % Runtime,
-    slf4j        % Runtime,
-    protobuf     % Runtime,
-    netty        % Runtime,
-    snappy       % Runtime
+    slf4j    % Runtime,
+    protobuf % Runtime,
+    netty    % Runtime,
+    snappy   % Runtime
   )
 
   val icebergDeltaRuntimeDependencies = Seq(
@@ -155,6 +154,7 @@ object Dependencies {
     decline,
     sentry,
     circeGenericExtra,
+    hadoopClient,
     specs2,
     catsEffectSpecs2,
     catsEffectTestkit,
@@ -168,8 +168,7 @@ object Dependencies {
     awsS3,
     awsGlue,
     awsS3Transfer % Runtime,
-    awsSts,
-    hadoopClient
+    awsSts
   ) ++ commonRuntimeDependencies
 
   val azureDependencies = Seq(
