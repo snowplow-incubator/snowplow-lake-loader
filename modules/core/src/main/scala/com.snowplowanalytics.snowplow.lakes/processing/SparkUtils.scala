@@ -17,14 +17,17 @@ import cats.implicits._
 import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 
+import org.apache.hadoop.conf.{Configuration => HadoopConfiguration}
 import org.apache.spark.sql.{DataFrame, Row, SparkSession}
 import org.apache.spark.sql.functions.current_timestamp
 import org.apache.spark.sql.types.StructType
 
 import com.snowplowanalytics.snowplow.lakes.Config
 import com.snowplowanalytics.snowplow.lakes.tables.Writer
+import com.snowplowanalytics.snowplow.lakes.fs.LakeLoaderFileSystem
 
 import scala.jdk.CollectionConverters._
+import java.net.URI
 
 private[processing] object SparkUtils {
 
@@ -32,7 +35,8 @@ private[processing] object SparkUtils {
 
   def session[F[_]: Async](
     config: Config.Spark,
-    writer: Writer
+    writer: Writer,
+    targetLocation: URI
   ): Resource[F, SparkSession] = {
     val builder =
       SparkSession
@@ -45,7 +49,19 @@ private[processing] object SparkUtils {
     val closeLogF = Logger[F].info("Closing the global spark session...")
     val buildF    = Sync[F].delay(builder.getOrCreate())
 
-    Resource.make(openLogF >> buildF)(s => closeLogF >> Sync[F].blocking(s.close()))
+    Resource
+      .make(openLogF >> buildF)(s => closeLogF >> Sync[F].blocking(s.close()))
+      .evalTap { session =>
+        setHadoopFileSystem[F](session.sparkContext.hadoopConfiguration, targetLocation)
+      }
+  }
+
+  private def setHadoopFileSystem[F[_]: Sync](conf: HadoopConfiguration, targetLocation: URI): F[Unit] = Sync[F].delay {
+    val scheme = targetLocation.getScheme
+    Option(conf.get(s"fs.$scheme.impl")).foreach { previousImpl =>
+      conf.set(s"fs.$scheme.lakeloader.delegate.impl", previousImpl)
+    }
+    conf.set(s"fs.$scheme.impl", classOf[LakeLoaderFileSystem].getName)
   }
 
   private def sparkConfigOptions(config: Config.Spark, writer: Writer): Map[String, String] = {
