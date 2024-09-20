@@ -22,7 +22,7 @@ import scala.concurrent.duration.FiniteDuration
 
 import com.snowplowanalytics.iglu.client.resolver.Resolver.ResolverConfig
 import com.snowplowanalytics.iglu.core.SchemaCriterion
-import com.snowplowanalytics.snowplow.runtime.{AcceptedLicense, Metrics => CommonMetrics, Retrying, Telemetry, Webhook}
+import com.snowplowanalytics.snowplow.runtime.{AcceptedLicense, HttpClient, Metrics => CommonMetrics, Retrying, Telemetry, Webhook}
 import com.snowplowanalytics.iglu.core.circe.CirceIgluCodecs.schemaCriterionDecoder
 import com.snowplowanalytics.snowplow.runtime.HealthProbe.decoders._
 
@@ -40,7 +40,8 @@ case class Config[+Source, +Sink](
   skipSchemas: List[SchemaCriterion],
   respectIgluNullability: Boolean,
   exitOnMissingIgluSchema: Boolean,
-  retries: Config.Retries
+  retries: Config.Retries,
+  http: Config.Http
 )
 
 object Config {
@@ -129,6 +130,8 @@ object Config {
     transientErrors: Retrying.Config.ForTransient
   )
 
+  case class Http(client: HttpClient.Config)
+
   implicit def decoder[Source: Decoder, Sink: Decoder]: Decoder[Config[Source, Sink]] = {
     implicit val configuration = Configuration.default.withDiscriminator("type")
     implicit val sinkWithMaxSize = for {
@@ -151,6 +154,7 @@ object Config {
     implicit val healthProbeDecoder = deriveConfiguredDecoder[HealthProbe]
     implicit val monitoringDecoder  = deriveConfiguredDecoder[Monitoring]
     implicit val retriesDecoder     = deriveConfiguredDecoder[Retries]
+    implicit val httpDecoder        = deriveConfiguredDecoder[Http]
 
     // TODO add specific lake-loader docs for license
     implicit val licenseDecoder =
