@@ -54,7 +54,9 @@ object Config {
 
   case class MaxRecordSize(maxRecordSize: Int)
 
-  sealed trait Target
+  sealed trait Target {
+    def location: URI
+  }
 
   case class Delta(
     location: URI,

@@ -23,8 +23,10 @@ import org.apache.spark.sql.types.StructType
 
 import com.snowplowanalytics.snowplow.lakes.Config
 import com.snowplowanalytics.snowplow.lakes.tables.Writer
+import com.snowplowanalytics.snowplow.lakes.fs.LakeLoaderFileSystem
 
 import scala.jdk.CollectionConverters._
+import java.net.URI
 
 private[processing] object SparkUtils {
 
@@ -32,7 +34,8 @@ private[processing] object SparkUtils {
 
   def session[F[_]: Async](
     config: Config.Spark,
-    writer: Writer
+    writer: Writer,
+    targetLocation: URI
   ): Resource[F, SparkSession] = {
     val builder =
       SparkSession
@@ -45,7 +48,14 @@ private[processing] object SparkUtils {
     val closeLogF = Logger[F].info("Closing the global spark session...")
     val buildF    = Sync[F].delay(builder.getOrCreate())
 
-    Resource.make(openLogF >> buildF)(s => closeLogF >> Sync[F].blocking(s.close()))
+    Resource
+      .make(openLogF >> buildF)(s => closeLogF >> Sync[F].blocking(s.close()))
+      .evalTap { session =>
+        Sync[F].delay {
+          // Forces Spark to use `LakeLoaderFileSystem` when writing to the Lake via Hadoop
+          LakeLoaderFileSystem.overrideHadoopFileSystemConf(targetLocation, session.sparkContext.hadoopConfiguration)
+        }
+      }
   }
 
   private def sparkConfigOptions(config: Config.Spark, writer: Writer): Map[String, String] = {
