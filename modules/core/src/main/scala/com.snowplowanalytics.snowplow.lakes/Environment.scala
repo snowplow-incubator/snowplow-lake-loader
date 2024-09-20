@@ -12,9 +12,7 @@ package com.snowplowanalytics.snowplow.lakes
 
 import cats.implicits._
 import cats.effect.{Async, Resource, Sync}
-import cats.effect.unsafe.implicits.global
 import org.http4s.client.Client
-import org.http4s.blaze.client.BlazeClientBuilder
 import io.sentry.Sentry
 
 import com.snowplowanalytics.iglu.client.resolver.Resolver
@@ -22,7 +20,7 @@ import com.snowplowanalytics.iglu.core.SchemaCriterion
 import com.snowplowanalytics.snowplow.sources.{EventProcessingConfig, SourceAndAck}
 import com.snowplowanalytics.snowplow.sinks.Sink
 import com.snowplowanalytics.snowplow.lakes.processing.LakeWriter
-import com.snowplowanalytics.snowplow.runtime.{AppHealth, AppInfo, HealthProbe, Webhook}
+import com.snowplowanalytics.snowplow.runtime.{AppHealth, AppInfo, HealthProbe, HttpClient, Webhook}
 
 /**
  * Resources and runtime-derived configuration needed for processing events
@@ -72,7 +70,7 @@ object Environment {
       sourceReporter = sourceAndAck.isHealthy(config.main.monitoring.healthProbe.unhealthyLatency).map(_.showIfUnhealthy)
       appHealth <- Resource.eval(AppHealth.init[F, Alert, RuntimeService](List(sourceReporter)))
       resolver <- mkResolver[F](config.iglu)
-      httpClient <- BlazeClientBuilder[F].withExecutionContext(global.compute).resource
+      httpClient <- HttpClient.resource[F](config.main.http.client)
       _ <- HealthProbe.resource(config.main.monitoring.healthProbe.port, appHealth)
       _ <- Webhook.resource(config.main.monitoring.webhook, appInfo, httpClient, appHealth)
       badSink <-
