@@ -6,6 +6,9 @@ Forked and adapted from the [original Snowplow lake loader](https://github.com/s
 
 Current version: **v0.0.0**
 
+_**NOTE**_: this README.md is placed in the `.github` folder to avoid the duplication of the same content in the main README.md.
+`/.github/README.md` generally has higher priority than `/README.md` to be displayed as the default page at github.com.
+
 ## Development, testing, and release management
 
 Several constraints made the local development process not so easy:
@@ -53,4 +56,4 @@ In the case of yes,
 This repo has a redacted GitHub Actions workflow for CI.
 
 It tests all the PRs, build and push a Docker image (to DockerHub as a public image) if the git commit is tagged.
-In case the tag starts with `v`, it tags the image additionally as `latest`. 
+In case the tag starts with `v`, it tags the image additionally as `latest`.
