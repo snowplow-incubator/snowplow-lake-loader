@@ -14,10 +14,12 @@ import cats.implicits._
 import cats.effect.Sync
 import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
-import org.apache.spark.sql.{DataFrame, SparkSession}
+import org.apache.spark.sql.{DataFrame, Row, SparkSession}
 
 import com.snowplowanalytics.snowplow.lakes.Config
 import com.snowplowanalytics.snowplow.lakes.processing.SparkSchema
+
+import scala.jdk.CollectionConverters._
 
 /**
  * A base [[Writer]] for all flavours of Iceberg. Different concrete classes support different types
@@ -25,7 +27,7 @@ import com.snowplowanalytics.snowplow.lakes.processing.SparkSchema
  */
 class IcebergWriter(config: Config.Iceberg) extends Writer {
 
-  private implicit def logger[F[_]: Sync] = Slf4jLogger.getLogger[F]
+  private implicit def logger[F[_]: Sync]: Logger[F] = Slf4jLogger.getLogger[F]
 
   // The name is not important, outside of this app
   private final val sparkCatalog: String = "iceberg_catalog"
@@ -50,7 +52,9 @@ class IcebergWriter(config: Config.Iceberg) extends Writer {
           TBLPROPERTIES($tableProps)
           $locationClause
         """)
-      }.void
+      }.void *>
+      // We make an empty commit during startup, so the loader can fail early if we are missing any permissions
+      write[F](spark.createDataFrame(List.empty[Row].asJava, SparkSchema.structForCreate))
 
   override def write[F[_]: Sync](df: DataFrame): F[Unit] =
     Sync[F].blocking {

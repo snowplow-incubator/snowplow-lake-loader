@@ -13,9 +13,10 @@ package com.snowplowanalytics.snowplow.lakes.processing
 import cats.implicits._
 import cats.data.NonEmptyList
 import cats.{Applicative, Foldable, Functor}
-import cats.effect.{Async, Sync}
+import cats.effect.{Async, Deferred, Sync}
 import cats.effect.kernel.{Ref, Unique}
 import fs2.{Chunk, Pipe, Stream}
+import io.circe.syntax._
 import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 import org.apache.spark.sql.Row
@@ -31,7 +32,7 @@ import com.snowplowanalytics.snowplow.badrows.{BadRow, Processor => BadRowProces
 import com.snowplowanalytics.snowplow.badrows.Payload.{RawPayload => BadRowRawPayload}
 import com.snowplowanalytics.snowplow.sources.{EventProcessingConfig, EventProcessor, TokenedEvents}
 import com.snowplowanalytics.snowplow.sinks.ListOfList
-import com.snowplowanalytics.snowplow.lakes.{Environment, Metrics}
+import com.snowplowanalytics.snowplow.lakes.{Environment, Metrics, RuntimeService}
 import com.snowplowanalytics.snowplow.runtime.processing.BatchUp
 import com.snowplowanalytics.snowplow.runtime.syntax.foldable._
 import com.snowplowanalytics.snowplow.loaders.transform.{
@@ -45,13 +46,22 @@ import com.snowplowanalytics.snowplow.loaders.transform.{
 
 object Processing {
 
-  private implicit def logger[F[_]: Sync] = Slf4jLogger.getLogger[F]
+  private implicit def logger[F[_]: Sync]: Logger[F] = Slf4jLogger.getLogger[F]
 
   def stream[F[_]: Async](env: Environment[F]): Stream[F, Nothing] =
-    Stream.eval(env.lakeWriter.createTable).flatMap { _ =>
+    Stream.eval(Deferred[F, Unit]).flatMap { deferredTableExists =>
+      val runInBackground =
+        // Create the table in a background stream, so it does not block subscribing to the stream.
+        // Needed for Kinesis, where we want to subscribe to the stream as early as possible, so that other workers don't steal our shard leases
+        Stream.eval(env.lakeWriter.createTable *> deferredTableExists.complete(()))
+
       implicit val lookup: RegistryLookup[F]           = Http4sRegistryLookup(env.httpClient)
       val eventProcessingConfig: EventProcessingConfig = EventProcessingConfig(env.windowing)
-      env.source.stream(eventProcessingConfig, eventProcessor(env))
+
+      env.source
+        .stream(eventProcessingConfig, eventProcessor(env, deferredTableExists.get))
+        .concurrently(runInBackground)
+
     }
 
   /** Model used between stages of the processing pipeline */
@@ -74,10 +84,12 @@ object Processing {
   )
 
   private def eventProcessor[F[_]: Async: RegistryLookup](
-    env: Environment[F]
+    env: Environment[F],
+    deferredTableExists: F[Unit]
   ): EventProcessor[F] = { in =>
     val resources = for {
       windowState <- Stream.eval(WindowState.build[F])
+      _ <- Stream.eval(deferredTableExists)
       stateRef <- Stream.eval(Ref[F].of(windowState))
       _ <- manageDataFrame(env, windowState.viewName)
     } yield stateRef
@@ -123,14 +135,15 @@ object Processing {
       for {
         _ <- Logger[F].debug(s"Processing batch of size ${events.size}")
         nonAtomicFields <- NonAtomicFields.resolveTypes[F](env.resolver, entities, env.schemasToSkip)
+        _ <- possiblyExitOnMissingIgluSchema(env, nonAtomicFields)
         _ <- rememberColumnNames(ref, nonAtomicFields.fields)
         (bad, rows) <- transformToSpark[F](badProcessor, events, nonAtomicFields)
         _ <- sendFailedEvents(env, badProcessor, bad)
         _ <- ref.update(s => s.copy(numEvents = s.numEvents + rows.size))
-      } yield Transformed(rows, SparkSchema.forBatch(nonAtomicFields.fields))
+      } yield Transformed(rows, SparkSchema.forBatch(nonAtomicFields.fields, env.respectIgluNullability))
     }
 
-  private def sinkTransformedBatch[F[_]: RegistryLookup: Sync](
+  private def sinkTransformedBatch[F[_]: Sync](
     env: Environment[F],
     ref: Ref[F, WindowState]
   ): Pipe[F, Transformed, Nothing] =
@@ -223,7 +236,7 @@ object Processing {
       }
     }
 
-  private def handleParseFailures[F[_]: Applicative, A](
+  private def handleParseFailures[F[_]: Sync, A](
     env: Environment[F],
     badProcessor: BadRowProcessor
   ): Pipe[F, ParseResult, ParseResult] =
@@ -231,16 +244,19 @@ object Processing {
       sendFailedEvents(env, badProcessor, batch.bad)
     }
 
-  private def sendFailedEvents[F[_]: Applicative, A](
+  private def sendFailedEvents[F[_]: Sync, A](
     env: Environment[F],
     badProcessor: BadRowProcessor,
     bad: List[BadRow]
   ): F[Unit] =
     if (bad.nonEmpty) {
-      val serialized = bad.map(_.compactByteArray)
-      bad.map(badRow => BadRowsSerializer.withMaxSize(badRow, badProcessor, env.badRowMaxSize))
+      val serialized = bad.map(badRow => BadRowsSerializer.withMaxSize(badRow, badProcessor, env.badRowMaxSize))
       env.metrics.addBad(bad.size) *>
-        env.badSink.sinkSimple(ListOfList.of(List(serialized)))
+        env.badSink
+          .sinkSimple(ListOfList.of(List(serialized)))
+          .onError { case _ =>
+            env.appHealth.beUnhealthyForRuntimeService(RuntimeService.BadSink)
+          }
     } else Applicative[F].unit
 
   private def finalizeWindow[F[_]: Sync](
@@ -263,4 +279,14 @@ object Processing {
 
       Stream.eval(commit) >> Stream.emits(state.tokens.reverse)
     }
+
+  private def possiblyExitOnMissingIgluSchema[F[_]: Sync](env: Environment[F], nonAtomicFields: NonAtomicFields.Result): F[Unit] =
+    if (env.exitOnMissingIgluSchema && nonAtomicFields.igluFailures.nonEmpty) {
+      val base =
+        "Exiting because failed to resolve Iglu schemas.  Either check the configuration of the Iglu repos, or set the `skipSchemas` config option, or set `exitOnMissingIgluSchema` to false.\n"
+      val msg = nonAtomicFields.igluFailures.map(_.failure.asJson.noSpaces).mkString(base, "\n", "")
+      Logger[F].error(base) *> env.appHealth.beUnhealthyForRuntimeService(RuntimeService.Iglu) *> Sync[F].raiseError(
+        new RuntimeException(msg)
+      )
+    } else Applicative[F].unit
 }

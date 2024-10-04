@@ -22,7 +22,7 @@ import scala.concurrent.duration.FiniteDuration
 
 import com.snowplowanalytics.iglu.client.resolver.Resolver.ResolverConfig
 import com.snowplowanalytics.iglu.core.SchemaCriterion
-import com.snowplowanalytics.snowplow.runtime.{AcceptedLicense, Metrics => CommonMetrics, Telemetry}
+import com.snowplowanalytics.snowplow.runtime.{AcceptedLicense, HttpClient, Metrics => CommonMetrics, Retrying, Telemetry, Webhook}
 import com.snowplowanalytics.iglu.core.circe.CirceIgluCodecs.schemaCriterionDecoder
 import com.snowplowanalytics.snowplow.runtime.HealthProbe.decoders._
 
@@ -37,7 +37,11 @@ case class Config[+Source, +Sink](
   telemetry: Telemetry.Config,
   monitoring: Config.Monitoring,
   license: AcceptedLicense,
-  skipSchemas: List[SchemaCriterion]
+  skipSchemas: List[SchemaCriterion],
+  respectIgluNullability: Boolean,
+  exitOnMissingIgluSchema: Boolean,
+  retries: Config.Retries,
+  http: Config.Http
 )
 
 object Config {
@@ -50,7 +54,9 @@ object Config {
 
   case class MaxRecordSize(maxRecordSize: Int)
 
-  sealed trait Target
+  sealed trait Target {
+    def location: URI
+  }
 
   case class Delta(
     location: URI,
@@ -114,8 +120,19 @@ object Config {
   case class Monitoring(
     metrics: Metrics,
     sentry: Option[Sentry],
-    healthProbe: HealthProbe
+    healthProbe: HealthProbe,
+    webhook: Webhook.Config
   )
+
+  case class SetupErrorRetries(delay: FiniteDuration)
+  case class TransientErrorRetries(delay: FiniteDuration, attempts: Int)
+
+  case class Retries(
+    setupErrors: Retrying.Config.ForSetup,
+    transientErrors: Retrying.Config.ForTransient
+  )
+
+  case class Http(client: HttpClient.Config)
 
   implicit def decoder[Source: Decoder, Sink: Decoder]: Decoder[Config[Source, Sink]] = {
     implicit val configuration = Configuration.default.withDiscriminator("type")
@@ -138,6 +155,8 @@ object Config {
     implicit val metricsDecoder     = deriveConfiguredDecoder[Metrics]
     implicit val healthProbeDecoder = deriveConfiguredDecoder[HealthProbe]
     implicit val monitoringDecoder  = deriveConfiguredDecoder[Monitoring]
+    implicit val retriesDecoder     = deriveConfiguredDecoder[Retries]
+    implicit val httpDecoder        = deriveConfiguredDecoder[Http]
 
     // TODO add specific lake-loader docs for license
     implicit val licenseDecoder =

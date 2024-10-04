@@ -22,7 +22,7 @@ import com.snowplowanalytics.iglu.client.Resolver
 import com.snowplowanalytics.snowplow.sources.{EventProcessingConfig, EventProcessor, SourceAndAck, TokenedEvents}
 import com.snowplowanalytics.snowplow.sinks.Sink
 import com.snowplowanalytics.snowplow.lakes.processing.LakeWriter
-import com.snowplowanalytics.snowplow.runtime.AppInfo
+import com.snowplowanalytics.snowplow.runtime.{AppHealth, AppInfo, Retrying}
 
 object TestSparkEnvironment {
 
@@ -32,20 +32,30 @@ object TestSparkEnvironment {
     windows: List[List[TokenedEvents]]
   ): Resource[IO, Environment[IO]] = for {
     testConfig <- Resource.pure(TestConfig.defaults(target, tmpDir))
-    (lakeWriter, _) <- LakeWriter.build[IO](testConfig.spark, testConfig.output.good)
+    source = testSourceAndAck(windows)
+    lakeWriter <- LakeWriter.build[IO](testConfig.spark, testConfig.output.good)
+    lakeWriterWrapped = LakeWriter.withHandledErrors(lakeWriter, dummyAppHealth, retriesConfig, PartialFunction.empty)
   } yield Environment(
-    appInfo         = appInfo,
-    source          = testSourceAndAck(windows),
-    badSink         = Sink[IO](_ => IO.unit),
-    resolver        = Resolver[IO](Nil, None),
-    httpClient      = testHttpClient,
-    lakeWriter      = lakeWriter,
-    metrics         = testMetrics,
-    inMemBatchBytes = 1000000L,
-    cpuParallelism  = 1,
-    windowing       = EventProcessingConfig.TimedWindows(1.minute, 1.0, 1),
-    badRowMaxSize   = 1000000,
-    schemasToSkip   = List.empty
+    appInfo                 = appInfo,
+    source                  = source,
+    badSink                 = Sink[IO](_ => IO.unit),
+    resolver                = Resolver[IO](Nil, None),
+    httpClient              = testHttpClient,
+    lakeWriter              = lakeWriterWrapped,
+    metrics                 = testMetrics,
+    appHealth               = dummyAppHealth,
+    inMemBatchBytes         = 1000000L,
+    cpuParallelism          = 1,
+    windowing               = EventProcessingConfig.TimedWindows(1.minute, 1.0, 1),
+    badRowMaxSize           = 1000000,
+    schemasToSkip           = List.empty,
+    respectIgluNullability  = true,
+    exitOnMissingIgluSchema = false
+  )
+
+  private val retriesConfig = Config.Retries(
+    Retrying.Config.ForSetup(30.seconds),
+    Retrying.Config.ForTransient(1.second, 5)
   )
 
   private def testSourceAndAck(windows: List[List[TokenedEvents]]): SourceAndAck[IO] =
@@ -80,6 +90,17 @@ object TestSparkEnvironment {
     def setLatency(latency: FiniteDuration): IO[Unit]           = IO.unit
     def setProcessingLatency(latency: FiniteDuration): IO[Unit] = IO.unit
     def report: Stream[IO, Nothing]                             = Stream.never[IO]
+  }
+
+  def dummyAppHealth: AppHealth.Interface[IO, Any, Any] = new AppHealth.Interface[IO, Any, Any] {
+    def beHealthyForSetup: IO[Unit] =
+      IO.unit
+    def beUnhealthyForSetup(alert: Any): IO[Unit] =
+      IO.unit
+    def beHealthyForRuntimeService(service: Any): IO[Unit] =
+      IO.unit
+    def beUnhealthyForRuntimeService(service: Any): IO[Unit] =
+      IO.unit
   }
 
 }

@@ -15,21 +15,17 @@ import cats.effect.kernel.Resource
 import cats.implicits._
 import cats.effect.testing.specs2.CatsEffect
 import io.circe.Json
-import fs2.{Chunk, Stream}
 import org.specs2.Specification
 import org.specs2.matcher.MatchResult
 
 import org.apache.spark.sql.{DataFrame, SparkSession}
 
 import scala.concurrent.duration.DurationInt
-import java.nio.charset.StandardCharsets
 import fs2.io.file.{Files, Path}
 
 import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer, SelfDescribingData}
-import com.snowplowanalytics.snowplow.analytics.scalasdk.{Event, SnowplowEvent}
-import com.snowplowanalytics.snowplow.analytics.scalasdk.SnowplowEvent.{Contexts, UnstructEvent}
+import com.snowplowanalytics.snowplow.analytics.scalasdk.SnowplowEvent
 import com.snowplowanalytics.snowplow.lakes.{TestConfig, TestSparkEnvironment}
-import com.snowplowanalytics.snowplow.sources.TokenedEvents
 
 /** Base Spec for testing different output formats of this loader */
 abstract class AbstractSparkSpec extends Specification with CatsEffect {
@@ -62,7 +58,7 @@ abstract class AbstractSparkSpec extends Specification with CatsEffect {
 
   def e1 = Files[IO].tempDirectory.use { tmpDir =>
     val resources = for {
-      inputs <- Resource.eval(inputEvents(2, good()))
+      inputs <- Resource.eval(EventUtils.inputEvents(2, EventUtils.good()))
       tokened <- Resource.eval(inputs.traverse(_.tokened))
       env <- TestSparkEnvironment.build(target, tmpDir, List(tokened))
     } yield (inputs, env)
@@ -125,9 +121,9 @@ abstract class AbstractSparkSpec extends Specification with CatsEffect {
     )
 
     val resources = for {
-      inputs1 <- Resource.eval(inputEvents(2, good(ue = ueGood700)))
+      inputs1 <- Resource.eval(EventUtils.inputEvents(2, EventUtils.good(ue = ueGood700)))
       tokened1 <- Resource.eval(inputs1.traverse(_.tokened))
-      inputs2 <- Resource.eval(inputEvents(2, good(ue = ueGood701)))
+      inputs2 <- Resource.eval(EventUtils.inputEvents(2, EventUtils.good(ue = ueGood701)))
       tokened2 <- Resource.eval(inputs2.traverse(_.tokened))
       env <- TestSparkEnvironment.build(target, tmpDir, List(tokened1, tokened2))
     } yield env
@@ -182,9 +178,9 @@ abstract class AbstractSparkSpec extends Specification with CatsEffect {
     )
 
     val resources = for {
-      inputs1 <- Resource.eval(inputEvents(2, good(ue = ueBadEvolution100)))
+      inputs1 <- Resource.eval(EventUtils.inputEvents(2, EventUtils.good(ue = ueBadEvolution100)))
       tokened1 <- Resource.eval(inputs1.traverse(_.tokened))
-      inputs2 <- Resource.eval(inputEvents(2, good(ue = ueBadEvolution101)))
+      inputs2 <- Resource.eval(EventUtils.inputEvents(2, EventUtils.good(ue = ueBadEvolution101)))
       tokened2 <- Resource.eval(inputs2.traverse(_.tokened))
       env <- TestSparkEnvironment.build(target, tmpDir, List(tokened1, tokened2))
     } yield env
@@ -228,7 +224,7 @@ abstract class AbstractSparkSpec extends Specification with CatsEffect {
     )
 
     val resources = for {
-      inputs <- Resource.eval(inputEvents(2, good(ue = adBreakEndEvent)))
+      inputs <- Resource.eval(EventUtils.inputEvents(2, EventUtils.good(ue = adBreakEndEvent)))
       tokened <- Resource.eval(inputs.traverse(_.tokened))
       env <- TestSparkEnvironment.build(target, tmpDir, List(tokened))
     } yield env
@@ -268,7 +264,7 @@ abstract class AbstractSparkSpec extends Specification with CatsEffect {
     )
 
     val resources = for {
-      inputs <- Resource.eval(inputEvents(2, good(ue = ue)))
+      inputs <- Resource.eval(EventUtils.inputEvents(2, EventUtils.good(ue = ue)))
       tokened <- Resource.eval(inputs.traverse(_.tokened))
       env <- TestSparkEnvironment.build(target, tmpDir, List(tokened))
     } yield env
@@ -308,7 +304,7 @@ abstract class AbstractSparkSpec extends Specification with CatsEffect {
     )
 
     val resources = for {
-      inputs <- Resource.eval(inputEvents(2, good(contexts = adBreakEndEvent)))
+      inputs <- Resource.eval(EventUtils.inputEvents(2, EventUtils.good(contexts = adBreakEndEvent)))
       tokened <- Resource.eval(inputs.traverse(_.tokened))
       env <- TestSparkEnvironment.build(target, tmpDir, List(tokened))
     } yield env
@@ -348,7 +344,7 @@ abstract class AbstractSparkSpec extends Specification with CatsEffect {
     )
 
     val resources = for {
-      inputs <- Resource.eval(inputEvents(2, good(contexts = contexts)))
+      inputs <- Resource.eval(EventUtils.inputEvents(2, EventUtils.good(contexts = contexts)))
       tokened <- Resource.eval(inputs.traverse(_.tokened))
       env <- TestSparkEnvironment.build(target, tmpDir, List(tokened))
     } yield env
@@ -380,41 +376,6 @@ abstract class AbstractSparkSpec extends Specification with CatsEffect {
 }
 
 object AbstractSparkSpec {
-
-  case class TestBatch(value: List[Event]) {
-    def tokened: IO[TokenedEvents] = {
-      val serialized = Chunk.from(value).map { e =>
-        StandardCharsets.UTF_8.encode(e.toTsv)
-      }
-      IO.unique.map { ack =>
-        TokenedEvents(serialized, ack, None)
-      }
-    }
-  }
-
-  def inputEvents(count: Long, source: IO[TestBatch]): IO[List[TestBatch]] =
-    Stream
-      .eval(source)
-      .repeat
-      .take(count)
-      .compile
-      .toList
-
-  def good(ue: UnstructEvent = UnstructEvent(None), contexts: Contexts = Contexts(List.empty)): IO[TestBatch] =
-    for {
-      eventId1 <- IO.randomUUID
-      eventId2 <- IO.randomUUID
-      collectorTstamp <- IO.realTimeInstant
-    } yield {
-      val event1 = Event
-        .minimal(eventId1, collectorTstamp, "0.0.0", "0.0.0")
-        .copy(tr_total = Some(1.23))
-        .copy(unstruct_event = ue)
-        .copy(contexts = contexts)
-      val event2 = Event
-        .minimal(eventId2, collectorTstamp, "0.0.0", "0.0.0")
-      TestBatch(List(event1, event2))
-    }
 
   /** A spark session just used for making assertions, not for running the code under test */
   private def sparkForAssertions(config: Map[String, String]): Resource[IO, SparkSession] = {

@@ -10,14 +10,14 @@
 
 package com.snowplowanalytics.snowplow.lakes
 
-import com.snowplowanalytics.snowplow.sources.pubsub.{PubsubSource, PubsubSourceConfig}
-import com.snowplowanalytics.snowplow.sinks.pubsub.{PubsubSink, PubsubSinkConfig}
+import org.apache.hudi.hive.HoodieHiveSyncException
 
-object GcpApp extends LoaderApp[PubsubSourceConfig, PubsubSinkConfig](BuildInfo) {
+object TableFormatSetupError {
 
-  override def source: SourceProvider = PubsubSource.build(_)
-
-  override def badSink: SinkProvider = PubsubSink.resource(_)
-
-  override def isDestinationSetupError: DestinationSetupErrorCheck = TableFormatSetupError.check
+  // Check if given exception is specific to hudi format
+  def check: PartialFunction[Throwable, String] = {
+    case e: HoodieHiveSyncException if e.getMessage.contains("database does not exist") =>
+      // Glue database does not exist or no permission to see it
+      e.getMessage
+  }
 }

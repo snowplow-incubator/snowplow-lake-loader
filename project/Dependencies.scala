@@ -12,22 +12,32 @@ import sbt._
 object Dependencies {
 
   object V {
+    object Spark {
+
+      // A version of Spark which is compatible with the current version of Iceberg and Delta
+      val forIcebergDelta      = "3.5.1"
+      val forIcebergDeltaMinor = "3.5"
+
+      // Hudi can use a different version of Spark because we bundle a separate Docker image
+      // This version of Spark must be compatible with the current version of Hudi
+      val forHudi      = "3.5.1"
+      val forHudiMinor = "3.5"
+    }
+
     // Scala
     val catsEffect       = "3.5.4"
-    val catsRetry        = "3.1.3"
     val decline          = "2.4.1"
     val circe            = "0.14.3"
     val http4s           = "0.23.16"
     val betterMonadicFor = "0.3.1"
 
     // Spark
-    val spark34        = "3.4.3"
-    val spark35        = "3.5.1"
     val delta          = "3.2.0"
-    val hudi           = "0.14.0"
+    val hudi           = "0.15.0"
+    val hudiAws        = "1.0.0-beta2"
     val iceberg        = "1.5.2"
     val hadoop         = "3.4.0"
-    val gcsConnector   = "hadoop3-2.2.17"
+    val gcsConnector   = "hadoop3-2.2.25"
     val biglakeIceberg = "0.1.0"
     val hive           = "3.1.3"
 
@@ -40,20 +50,15 @@ object Dependencies {
     val awsRegistry = "1.1.20"
 
     // Snowplow
-    val streams    = "0.7.0"
-    val igluClient = "3.0.0"
+    val streams    = "0.8.0-M5"
+    val igluClient = "3.2.0"
 
     // Transitive overrides
-    val protobuf = "3.25.1"
-    val snappy   = "1.1.10.5"
-    val thrift   = "0.18.1"
-    val netty    = "4.1.109.Final"
-
-    /**
-     * The Lake Loader currently does not work with pubsub SDK versions later than 1.125.10. It
-     * appears to be an incompatibility in transitive dependencies, (e.g. grpc).
-     */
-    val pubsubSdk = "1.125.10"
+    val protobuf  = "3.25.1"
+    val snappy    = "1.1.10.5"
+    val thrift    = "0.18.1"
+    val netty     = "4.1.109.Final"
+    val pubsubSdk = "1.132.3"
 
     // tests
     val specs2           = "4.20.0"
@@ -61,27 +66,29 @@ object Dependencies {
 
   }
 
-  val catsRetry         = "com.github.cb372" %% "cats-retry"           % V.catsRetry
-  val blazeClient       = "org.http4s"       %% "http4s-blaze-client"  % V.http4s
-  val decline           = "com.monovore"     %% "decline-effect"       % V.decline
-  val circeGenericExtra = "io.circe"         %% "circe-generic-extras" % V.circe
-  val betterMonadicFor  = "com.olegpy"       %% "better-monadic-for"   % V.betterMonadicFor
+  val decline           = "com.monovore" %% "decline-effect"       % V.decline
+  val circeGenericExtra = "io.circe"     %% "circe-generic-extras" % V.circe
+  val betterMonadicFor  = "com.olegpy"   %% "better-monadic-for"   % V.betterMonadicFor
+
+  object Spark {
+    val coreForIcebergDelta = "org.apache.spark" %% "spark-core" % V.Spark.forIcebergDelta
+    val sqlForIcebergDelta  = "org.apache.spark" %% "spark-sql"  % V.Spark.forIcebergDelta
+    val coreForHudi         = "org.apache.spark" %% "spark-core" % V.Spark.forHudi
+    val sqlForHudi          = "org.apache.spark" %% "spark-sql"  % V.Spark.forHudi
+    val hiveForHudi         = "org.apache.spark" %% "spark-hive" % V.Spark.forHudi
+  }
 
   // spark and hadoop
-  val sparkCore35  = "org.apache.spark"           %% "spark-core"                % V.spark35
-  val sparkSql35   = "org.apache.spark"           %% "spark-sql"                 % V.spark35
-  val sparkCore34  = "org.apache.spark"           %% "spark-core"                % V.spark34
-  val sparkSql34   = "org.apache.spark"           %% "spark-sql"                 % V.spark34
-  val sparkHive34  = "org.apache.spark"           %% "spark-hive"                % V.spark34
-  val delta        = "io.delta"                   %% "delta-spark"               % V.delta
-  val hudi         = "org.apache.hudi"            %% "hudi-spark3.4-bundle"      % V.hudi
-  val hudiAws      = "org.apache.hudi"             % "hudi-aws"                  % V.hudi
-  val iceberg      = "org.apache.iceberg"         %% "iceberg-spark-runtime-3.5" % V.iceberg
-  val hadoopClient = "org.apache.hadoop"           % "hadoop-client-runtime"     % V.hadoop
-  val hadoopAzure  = "org.apache.hadoop"           % "hadoop-azure"              % V.hadoop
-  val hadoopAws    = "org.apache.hadoop"           % "hadoop-aws"                % V.hadoop
-  val gcsConnector = "com.google.cloud.bigdataoss" % "gcs-connector"             % V.gcsConnector
-  val hiveCommon   = "org.apache.hive"             % "hive-common"               % V.hive
+  val delta        = "io.delta"                   %% "delta-spark"                                            % V.delta
+  val hudi         = "org.apache.hudi"            %% s"hudi-spark${V.Spark.forHudiMinor}-bundle"              % V.hudi
+  val iceberg      = "org.apache.iceberg"         %% s"iceberg-spark-runtime-${V.Spark.forIcebergDeltaMinor}" % V.iceberg
+  val hadoopClient = "org.apache.hadoop"           % "hadoop-client-runtime"                                  % V.hadoop
+  val hadoopAzure  = "org.apache.hadoop"           % "hadoop-azure"                                           % V.hadoop
+  val hadoopAws    = "org.apache.hadoop"           % "hadoop-aws"                                             % V.hadoop
+  val gcsConnector = "com.google.cloud.bigdataoss" % "gcs-connector"                                          % V.gcsConnector
+  val hiveCommon   = "org.apache.hive"             % "hive-common"                                            % V.hive
+
+  val hudiAws = ("org.apache.hudi" % "hudi-aws" % V.hudiAws).excludeAll(ExclusionRule(organization = "org.apache.hudi"))
 
   // java
   val slf4j         = "org.slf4j"              % "slf4j-simple"          % V.slf4j
@@ -117,34 +124,32 @@ object Dependencies {
   val catsEffectSpecs2  = "org.typelevel" %% "cats-effect-testing-specs2" % V.catsEffectSpecs2 % Test
 
   val commonRuntimeDependencies = Seq(
-    hadoopClient % Runtime,
-    slf4j        % Runtime,
-    protobuf     % Runtime,
-    netty        % Runtime,
-    snappy       % Runtime
+    slf4j    % Runtime,
+    protobuf % Runtime,
+    netty    % Runtime,
+    snappy   % Runtime
   )
 
-  val spark35RuntimeDependencies = Seq(
-    delta       % Runtime,
-    iceberg     % Runtime,
-    sparkCore35 % Runtime,
-    sparkSql35  % Runtime
+  val icebergDeltaRuntimeDependencies = Seq(
+    iceberg,
+    delta                     % Runtime,
+    Spark.coreForIcebergDelta % Runtime,
+    Spark.sqlForIcebergDelta  % Runtime
   )
 
   val coreDependencies = Seq(
     streamsCore,
     loaders,
     runtime,
-    catsRetry,
-    delta       % Provided,
-    sparkCore35 % Provided,
-    sparkSql35  % Provided,
-    iceberg     % Provided,
+    delta                     % Provided,
+    Spark.coreForIcebergDelta % Provided,
+    Spark.sqlForIcebergDelta  % Provided,
+    iceberg                   % Provided,
     igluClientHttp4s,
-    blazeClient,
     decline,
     sentry,
     circeGenericExtra,
+    hadoopClient,
     specs2,
     catsEffectSpecs2,
     catsEffectTestkit,
@@ -155,11 +160,10 @@ object Dependencies {
     kinesis,
     hadoopAws.exclude("software.amazon.awssdk", "bundle"),
     awsCore, // Dependency on aws sdk v1 will likely be removed in the next release of hadoop-aws
-    awsGlue       % Runtime,
-    awsS3         % Runtime,
+    awsS3,
+    awsGlue,
     awsS3Transfer % Runtime,
-    awsSts        % Runtime,
-    hadoopClient
+    awsSts
   ) ++ commonRuntimeDependencies
 
   val azureDependencies = Seq(
@@ -170,8 +174,8 @@ object Dependencies {
   ) ++ commonRuntimeDependencies
 
   val gcpDependencies = Seq(
-    pubsub.exclude("com.google.cloud", "google-cloud-pubsub"),
-    pubsubSdk, // replace pubsub sdk with an earlier version
+    pubsub,
+    pubsubSdk,
     gcsConnector
   ) ++ commonRuntimeDependencies
 
@@ -182,10 +186,10 @@ object Dependencies {
   )
 
   val hudiDependencies = Seq(
-    hudi        % Runtime,
-    sparkCore34 % Runtime,
-    sparkSql34  % Runtime,
-    sparkHive34 % Runtime
+    hudi,
+    Spark.coreForHudi % Runtime,
+    Spark.sqlForHudi  % Runtime,
+    Spark.hiveForHudi % Runtime
   )
 
   val hudiAwsDependencies = Seq(

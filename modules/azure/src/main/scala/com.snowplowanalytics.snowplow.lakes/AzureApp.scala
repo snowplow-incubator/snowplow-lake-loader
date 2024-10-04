@@ -34,4 +34,6 @@ object AzureApp extends LoaderApp[KafkaSourceConfig, KafkaSinkConfig](BuildInfo)
   override def source: SourceProvider = KafkaSource.build(_, classTag[SourceAuthHandler])
 
   override def badSink: SinkProvider = KafkaSink.resource(_, classTag[SinkAuthHandler])
+
+  override def isDestinationSetupError: DestinationSetupErrorCheck = TableFormatSetupError.check
 }

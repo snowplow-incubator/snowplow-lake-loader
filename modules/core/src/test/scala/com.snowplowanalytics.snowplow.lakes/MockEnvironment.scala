@@ -22,6 +22,7 @@ import org.apache.spark.sql.types.StructType
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
 import com.snowplowanalytics.iglu.client.Resolver
+import com.snowplowanalytics.snowplow.runtime.AppHealth
 import com.snowplowanalytics.snowplow.sources.{EventProcessingConfig, EventProcessor, SourceAndAck, TokenedEvents}
 import com.snowplowanalytics.snowplow.sinks.Sink
 import com.snowplowanalytics.snowplow.lakes.processing.LakeWriter
@@ -33,11 +34,15 @@ object MockEnvironment {
   /** All tests can use the same window duration */
   val WindowDuration = 42.seconds
 
+  /** All tests can use the same time taken to create table */
+  val TimeTakenToCreateTable = 10.seconds
+
   sealed trait Action
   object Action {
+    case object SubscribedToStream extends Action
+    case object CreatedTable extends Action
     case class Checkpointed(tokens: List[Unique.Token]) extends Action
     case class SentToBad(count: Int) extends Action
-    case object CreatedTable extends Action
     case class InitializedLocalDataFrame(viewName: String) extends Action
     case class AppendedRowsToDataFrame(viewName: String, numEvents: Int) extends Action
     case class RemovedDataFrameFromDisk(viewName: String) extends Action
@@ -49,6 +54,10 @@ object MockEnvironment {
     case class AddedCommittedCountMetric(count: Int) extends Action
     case class SetLatencyMetric(latency: FiniteDuration) extends Action
     case class SetProcessingLatencyMetric(latency: FiniteDuration) extends Action
+
+    /* Health */
+    case class BecameUnhealthy(service: RuntimeService) extends Action
+    case class BecameHealthy(service: RuntimeService) extends Action
   }
   import Action._
 
@@ -64,27 +73,31 @@ object MockEnvironment {
   def build(windows: List[List[TokenedEvents]]): IO[MockEnvironment] =
     for {
       state <- Ref[IO].of(Vector.empty[Action])
+      source = testSourceAndAck(windows, state)
     } yield {
       val env = Environment(
-        appInfo         = TestSparkEnvironment.appInfo,
-        source          = testSourceAndAck(windows, state),
-        badSink         = testSink(state),
-        resolver        = Resolver[IO](Nil, None),
-        httpClient      = testHttpClient,
-        lakeWriter      = testLakeWriter(state),
-        metrics         = testMetrics(state),
-        inMemBatchBytes = 1000000L,
-        cpuParallelism  = 1,
-        windowing       = EventProcessingConfig.TimedWindows(1.minute, 1.0, 1),
-        badRowMaxSize   = 1000000,
-        schemasToSkip   = List.empty
+        appInfo                 = TestSparkEnvironment.appInfo,
+        source                  = source,
+        badSink                 = testSink(state),
+        resolver                = Resolver[IO](Nil, None),
+        httpClient              = testHttpClient,
+        lakeWriter              = testLakeWriter(state),
+        metrics                 = testMetrics(state),
+        appHealth               = testAppHealth(state),
+        inMemBatchBytes         = 1000000L,
+        cpuParallelism          = 1,
+        windowing               = EventProcessingConfig.TimedWindows(1.minute, 1.0, 1),
+        badRowMaxSize           = 1000000,
+        schemasToSkip           = List.empty,
+        respectIgluNullability  = true,
+        exitOnMissingIgluSchema = false
       )
       MockEnvironment(state, env)
     }
 
-  private def testLakeWriter(state: Ref[IO, Vector[Action]]): LakeWriter[IO] = new LakeWriter[IO] {
+  private def testLakeWriter(state: Ref[IO, Vector[Action]]): LakeWriter.WithHandledErrors[IO] = new LakeWriter.WithHandledErrors[IO] {
     def createTable: IO[Unit] =
-      state.update(_ :+ CreatedTable)
+      IO.sleep(TimeTakenToCreateTable) *> state.update(_ :+ CreatedTable)
 
     def initializeLocalDataFrame(viewName: String): IO[Unit] =
       state.update(_ :+ InitializedLocalDataFrame(viewName))
@@ -106,17 +119,18 @@ object MockEnvironment {
   private def testSourceAndAck(windows: List[List[TokenedEvents]], state: Ref[IO, Vector[Action]]): SourceAndAck[IO] =
     new SourceAndAck[IO] {
       def stream(config: EventProcessingConfig, processor: EventProcessor[IO]): Stream[IO, Nothing] =
-        Stream.emits(windows).flatMap { batches =>
-          Stream
-            .emits(batches)
-            .onFinalize(IO.sleep(WindowDuration))
-            .through(processor)
-            .chunks
-            .evalMap { chunk =>
-              state.update(_ :+ Checkpointed(chunk.toList))
-            }
-            .drain
-        }
+        Stream.eval(state.update(_ :+ SubscribedToStream)).drain ++
+          Stream.emits(windows).flatMap { batches =>
+            Stream
+              .emits(batches)
+              .onFinalize(IO.sleep(WindowDuration))
+              .through(processor)
+              .chunks
+              .evalMap { chunk =>
+                state.update(_ :+ Checkpointed(chunk.toList))
+              }
+              .drain
+          }
 
       def isHealthy(maxAllowedProcessingLatency: FiniteDuration): IO[SourceAndAck.HealthStatus] =
         IO.pure(SourceAndAck.Healthy)
@@ -148,4 +162,16 @@ object MockEnvironment {
 
     def report: Stream[IO, Nothing] = Stream.never[IO]
   }
+
+  private def testAppHealth(ref: Ref[IO, Vector[Action]]): AppHealth.Interface[IO, Alert, RuntimeService] =
+    new AppHealth.Interface[IO, Alert, RuntimeService] {
+      def beHealthyForSetup: IO[Unit] =
+        IO.unit
+      def beUnhealthyForSetup(alert: Alert): IO[Unit] =
+        IO.unit
+      def beHealthyForRuntimeService(service: RuntimeService): IO[Unit] =
+        ref.update(_ :+ BecameHealthy(service))
+      def beUnhealthyForRuntimeService(service: RuntimeService): IO[Unit] =
+        ref.update(_ :+ BecameUnhealthy(service))
+    }
 }

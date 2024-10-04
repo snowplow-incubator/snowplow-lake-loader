@@ -12,16 +12,18 @@ package com.snowplowanalytics.snowplow.lakes.tables
 
 import cats.implicits._
 import cats.effect.Sync
-import org.apache.spark.sql.{DataFrame, SparkSession}
+import org.apache.spark.sql.{DataFrame, Row, SparkSession}
 import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 
 import com.snowplowanalytics.snowplow.lakes.Config
 import com.snowplowanalytics.snowplow.lakes.processing.SparkSchema
 
+import scala.jdk.CollectionConverters._
+
 class HudiWriter(config: Config.Hudi) extends Writer {
 
-  private implicit def logger[F[_]: Sync] = Slf4jLogger.getLogger[F]
+  private implicit def logger[F[_]: Sync]: Logger[F] = Slf4jLogger.getLogger[F]
 
   override def sparkConfig: Map[String, String] =
     Map(
@@ -47,18 +49,20 @@ class HudiWriter(config: Config.Hudi) extends Writer {
           USING HUDI
           LOCATION '${config.location}'
           TBLPROPERTIES($tableProps)
-        """)
+        """): Unit
 
         // We call clean/archive during startup because it also triggers rollback of any previously
         // failed commits. We want to do the rollbacks before early, so that we are immediately
         // healthy once we start consuming events.
         spark.sql(s"""
           CALL run_clean(table => '$internal_table_name')
-        """)
+        """): Unit
         spark.sql(s"""
           CALL archive_commits(table => '$internal_table_name')
         """)
-      }.void
+      }.void *>
+      // We make an empty commit during startup, so the loader can fail early if we are missing any permissions
+      write[F](spark.createDataFrame(List.empty[Row].asJava, SparkSchema.structForCreate))
   }
 
   private def maybeCreateDatabase[F[_]: Sync](spark: SparkSession): F[Unit] =
@@ -67,7 +71,7 @@ class HudiWriter(config: Config.Hudi) extends Writer {
         Sync[F].blocking {
           // This action does not have any effect beyond the internals of this loader.
           // It is required to prevent later exceptions for an unknown database.
-          spark.sql(s"CREATE DATABASE $db")
+          spark.sql(s"CREATE DATABASE IF NOT EXISTS $db")
         }.void
       case None =>
         Sync[F].unit

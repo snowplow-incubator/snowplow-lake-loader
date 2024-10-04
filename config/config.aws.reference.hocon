@@ -34,10 +34,6 @@
       "maxRecords": 1000
     }
 
-    # -- The number of batches of events which are pre-fetched from kinesis.
-    # -- Increasing this above 1 is not known to improve performance.
-    "bufferSize": 3
-
     # -- Name of this KCL worker used in the dynamodb lease table
     "workerIdentifier": ${HOSTNAME}
 
@@ -181,6 +177,24 @@
     "writerParallelismFraction": 0.5
   }
 
+  # Retry configuration for lake operation failures
+  "retries": {
+
+    # -- Configures exponential backoff on errors related to how lake is set up for this loader.
+    # -- Examples include authentication errors and permissions errors.
+    # -- This class of errors are reported periodically to the monitoring webhook.
+    "setupErrors": {
+      "delay": "30 seconds"
+    }
+
+    # -- Configures exponential backoff errors that are likely to be transient.
+    # -- Examples include server errors and network errors
+    "transientErrors": {
+      "delay": "1 second"
+      "attempts": 5
+    }
+  }
+
   # -- Schemas that won't be loaded to the lake.  Optional, default value []
   "skipSchemas": [
     "iglu:com.acme/skipped1/jsonschema/1-0-0"
@@ -188,6 +202,25 @@
     "iglu:com.acme/skipped3/jsonschema/1-*-*"
     "iglu:com.acme/skipped4/jsonschema/*-*-*"
   ]
+
+  # -- Whether the loader should crash and exit if it fails to resolve an Iglu Schema.
+  # -- We recommend `true` because Snowplow enriched events have already passed validation, so a missing schema normally
+  # -- indicates an error that needs addressing.
+  # -- Change to `false` so events go the failed events stream instead of crashing the loader.
+  "exitOnMissingIgluSchema": true
+
+  # -- Whether the output parquet files should declare nested fields as non-nullable according to the Iglu schema.
+  # -- When true (default), nested fields are nullable only if they are not required fields according to the Iglu schema.
+  # -- When false, all nested fields are defined as nullable in the output table's schemas
+  # -- Set this to false if you use a query engine that dislikes non-nullable nested fields of a nullable struct.
+  "respectIgluNullability": true
+
+  # -- Configuration of internal http client used for iglu resolver, alerts and telemetry
+  "http": {
+    "client": {
+      "maxConnectionsPerServer": 4
+    }
+  }
 
   "monitoring": {
     "metrics": {
@@ -223,6 +256,18 @@
       "tags": {
         "myTag": "xyz"
       }
+    }
+
+    # -- Report alerts and heartbeats to the webhook 
+    "webhook": {
+      # An actual HTTP endpoint
+      "endpoint": "https://webhook.acme.com",
+      # Set of arbitrary key-value pairs attached to the payload
+      "tags": {
+        "pipeline": "production"
+      }
+      # How often to send the heartbeat event
+      "heartbeat": "60.minutes"
     }
 
     # -- Open a HTTP server that returns OK only if the app is healthy
