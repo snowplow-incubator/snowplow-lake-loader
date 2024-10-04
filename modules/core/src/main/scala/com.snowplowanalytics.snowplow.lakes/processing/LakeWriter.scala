@@ -12,13 +12,13 @@ package com.snowplowanalytics.snowplow.lakes.processing
 
 import cats.implicits._
 import cats.data.NonEmptyList
-import cats.effect.{Async, Ref, Resource, Sync}
+import cats.effect.{Async, Resource, Sync}
 import cats.effect.std.Mutex
 import org.apache.spark.sql.{Row, SparkSession}
 import org.apache.spark.sql.types.StructType
 
-import com.snowplowanalytics.snowplow.runtime.HealthProbe
-import com.snowplowanalytics.snowplow.lakes.Config
+import com.snowplowanalytics.snowplow.runtime.{AppHealth, Retrying}
+import com.snowplowanalytics.snowplow.lakes.{Alert, Config, DestinationSetupErrorCheck, RuntimeService}
 import com.snowplowanalytics.snowplow.lakes.tables.{DeltaWriter, HudiWriter, IcebergWriter, Writer}
 
 trait LakeWriter[F[_]] {
@@ -68,26 +68,63 @@ trait LakeWriter[F[_]] {
 
 object LakeWriter {
 
+  trait WithHandledErrors[F[_]] extends LakeWriter[F]
+
   def build[F[_]: Async](
     config: Config.Spark,
     target: Config.Target
-  ): Resource[F, (LakeWriter[F], F[HealthProbe.Status])] = {
+  ): Resource[F, LakeWriter[F]] = {
     val w = target match {
       case c: Config.Delta   => new DeltaWriter(c)
       case c: Config.Hudi    => new HudiWriter(c)
       case c: Config.Iceberg => new IcebergWriter(c)
     }
     for {
-      session <- SparkUtils.session[F](config, w)
-      isHealthy <- Resource.eval(Ref[F].of(initialHealthStatus))
+      session <- SparkUtils.session[F](config, w, target.location)
       writerParallelism = chooseWriterParallelism(config)
       mutex1 <- Resource.eval(Mutex[F])
       mutex2 <- Resource.eval(Mutex[F])
-    } yield (impl(session, w, isHealthy, writerParallelism, mutex1, mutex2), isHealthy.get)
+    } yield impl(session, w, writerParallelism, mutex1, mutex2)
   }
 
-  private def initialHealthStatus: HealthProbe.Status =
-    HealthProbe.Unhealthy("Destination table not initialized yet")
+  def withHandledErrors[F[_]: Async](
+    underlying: LakeWriter[F],
+    appHealth: AppHealth.Interface[F, Alert, RuntimeService],
+    retries: Config.Retries,
+    destinationSetupErrorCheck: DestinationSetupErrorCheck
+  ): WithHandledErrors[F] = new WithHandledErrors[F] {
+    def createTable: F[Unit] =
+      Retrying.withRetries(
+        appHealth,
+        retries.transientErrors,
+        retries.setupErrors,
+        RuntimeService.SparkWriter,
+        Alert.FailedToCreateEventsTable,
+        destinationSetupErrorCheck
+      ) {
+        underlying.createTable
+      } <* appHealth.beHealthyForSetup
+
+    def initializeLocalDataFrame(viewName: String): F[Unit] =
+      underlying.initializeLocalDataFrame(viewName)
+
+    def localAppendRows(
+      viewName: String,
+      rows: NonEmptyList[Row],
+      schema: StructType
+    ): F[Unit] =
+      underlying.localAppendRows(viewName, rows, schema)
+
+    def removeDataFrameFromDisk(viewName: String): F[Unit] =
+      underlying.removeDataFrameFromDisk(viewName)
+
+    def commit(viewName: String): F[Unit] =
+      underlying
+        .commit(viewName)
+        .onError { case _ =>
+          appHealth.beUnhealthyForRuntimeService(RuntimeService.SparkWriter)
+        } <* appHealth.beHealthyForRuntimeService(RuntimeService.SparkWriter)
+  }
 
   /**
    * Implementation of the LakeWriter
@@ -105,13 +142,12 @@ object LakeWriter {
   private def impl[F[_]: Sync](
     spark: SparkSession,
     w: Writer,
-    isHealthy: Ref[F, HealthProbe.Status],
     writerParallelism: Int,
     mutexForWriting: Mutex[F],
     mutexForUnioning: Mutex[F]
   ): LakeWriter[F] = new LakeWriter[F] {
     def createTable: F[Unit] =
-      w.prepareTable(spark) <* isHealthy.set(HealthProbe.Healthy)
+      w.prepareTable(spark)
 
     def initializeLocalDataFrame(viewName: String): F[Unit] =
       SparkUtils.initializeLocalDataFrame(spark, viewName)
@@ -131,9 +167,10 @@ object LakeWriter {
         df <- mutexForUnioning.lock.surround {
                 SparkUtils.prepareFinalDataFrame(spark, viewName, writerParallelism)
               }
-        _ <- mutexForWriting.lock.surround {
-               w.write(df)
-             }
+        _ <- mutexForWriting.lock
+               .surround {
+                 w.write(df)
+               }
       } yield ()
   }
 

@@ -1,0 +1,66 @@
+FROM openjdk:11-jdk-bullseye
+
+# Env variables
+ENV SCALA_VERSION=2.13.13
+ENV SBT_VERSION=1.9.8
+
+ARG USER_ID
+ENV USER_ID=${USER_ID:-1001}
+ARG GROUP_ID
+ENV GROUP_ID=${GROUP_ID:-1001}
+
+# Install dependencies
+RUN \
+  # curl for downloading sbt and scala \
+  # git and for sbt-native-packager (see https://github.com/sbt/docker-sbt/pull/114)
+  apt-get -qq update && \
+  apt-get -qq install -y --no-install-recommends \
+    curl \
+    git \
+    bash && \
+  # Install sbt
+  curl -fsL --show-error "https://github.com/sbt/sbt/releases/download/v$SBT_VERSION/sbt-$SBT_VERSION.tgz" | tar xfz - -C /usr/share && \
+  chown -R root:root /usr/share/sbt && \
+  chmod -R 755 /usr/share/sbt && \
+  ln -s /usr/share/sbt/bin/sbt /usr/local/bin/sbt && \
+  # Install Scala
+  curl -fsL --show-error https://downloads.typesafe.com/scala/$SCALA_VERSION/scala-$SCALA_VERSION.tgz | tar xfz - -C /usr/share && \
+  mv /usr/share/scala-$SCALA_VERSION /usr/share/scala && \
+  chown -R root:root /usr/share/scala && \
+  chmod -R 755 /usr/share/scala && \
+  ln -s /usr/share/scala/bin/* /usr/local/bin && \
+  # Symlink java to have it available on sbtuser's PATH
+  ln -s /usr/lib/jvm/java-8-amazon-corretto/bin/java /usr/local/bin/java
+
+#
+# Install Docker (and dind)
+#
+RUN \
+apt-get -qq update \
+&& apt-get -qq install -y --no-install-recommends \
+      apt-transport-https \
+      ca-certificates \
+      software-properties-common \
+      gnupg \
+&& mkdir -p /etc/apt/keyrings \
+&& curl -sSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg \
+&& echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian $(lsb_release -cs) stable" > /etc/apt/sources.list.d/docker.list \
+&& apt-get -qq update \
+&& apt-get -qq install -y --no-install-recommends \
+      containerd.io \
+      docker-buildx-plugin \
+      docker-ce \
+      docker-ce-cli \
+      docker-compose-plugin \
+# set up subuid/subgid so that "--userns-remap=default" works out-of-the-box
+&& addgroup dockremap \
+&& useradd -g dockremap dockremap \
+&& echo 'dockremap:165536:65536' >> /etc/subuid \
+&& echo 'dockremap:165536:65536' >> /etc/subgid \
+# refer to https://github.com/docker-library/docker/blob/master/versions.sh
+&& DIND_COMMIT=$(curl -sSL https://github.com/docker/docker/commits/master/hack/dind.atom |grep -E 'id.*Commit' |awk -F '[[:space:]]*[<>/]+' '$2 == "id" && $3 ~ /Commit/ { print $4; exit }') \
+&& curl -sSL -o /usr/local/bin/dind https://raw.githubusercontent.com/docker/docker/${DIND_COMMIT}/hack/dind \
+&& chmod +x /usr/local/bin/dind \
+&& docker -v \
+&& docker compose version \
+&& docker buildx version \

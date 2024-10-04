@@ -10,12 +10,9 @@
 
 package com.snowplowanalytics.snowplow.lakes
 
-import cats.{Functor, Monad}
 import cats.implicits._
 import cats.effect.{Async, Resource, Sync}
-import cats.effect.unsafe.implicits.global
 import org.http4s.client.Client
-import org.http4s.blaze.client.BlazeClientBuilder
 import io.sentry.Sentry
 
 import com.snowplowanalytics.iglu.client.resolver.Resolver
@@ -23,7 +20,7 @@ import com.snowplowanalytics.iglu.core.SchemaCriterion
 import com.snowplowanalytics.snowplow.sources.{EventProcessingConfig, SourceAndAck}
 import com.snowplowanalytics.snowplow.sinks.Sink
 import com.snowplowanalytics.snowplow.lakes.processing.LakeWriter
-import com.snowplowanalytics.snowplow.runtime.{AppInfo, HealthProbe}
+import com.snowplowanalytics.snowplow.runtime.{AppHealth, AppInfo, HealthProbe, HttpClient, Webhook}
 
 /**
  * Resources and runtime-derived configuration needed for processing events
@@ -46,13 +43,16 @@ case class Environment[F[_]](
   badSink: Sink[F],
   resolver: Resolver[F],
   httpClient: Client[F],
-  lakeWriter: LakeWriter[F],
+  lakeWriter: LakeWriter.WithHandledErrors[F],
   metrics: Metrics[F],
+  appHealth: AppHealth.Interface[F, Alert, RuntimeService],
   cpuParallelism: Int,
   inMemBatchBytes: Long,
   windowing: EventProcessingConfig.TimedWindows,
   badRowMaxSize: Int,
-  schemasToSkip: List[SchemaCriterion]
+  schemasToSkip: List[SchemaCriterion],
+  respectIgluNullability: Boolean,
+  exitOnMissingIgluSchema: Boolean
 )
 
 object Environment {
@@ -61,33 +61,41 @@ object Environment {
     config: Config.WithIglu[SourceConfig, SinkConfig],
     appInfo: AppInfo,
     toSource: SourceConfig => F[SourceAndAck[F]],
-    toSink: SinkConfig => Resource[F, Sink[F]]
+    toSink: SinkConfig => Resource[F, Sink[F]],
+    destinationSetupErrorCheck: DestinationSetupErrorCheck
   ): Resource[F, Environment[F]] =
     for {
       _ <- enableSentry[F](appInfo, config.main.monitoring.sentry)
-      resolver <- mkResolver[F](config.iglu)
-      httpClient <- BlazeClientBuilder[F].withExecutionContext(global.compute).resource
-      badSink <- toSink(config.main.output.bad.sink)
-      windowing <- Resource.eval(EventProcessingConfig.TimedWindows.build(config.main.windowing, config.main.numEagerWindows))
-      (lakeWriter, lakeWriterHealth) <- LakeWriter.build[F](config.main.spark, config.main.output.good)
       sourceAndAck <- Resource.eval(toSource(config.main.input))
+      sourceReporter = sourceAndAck.isHealthy(config.main.monitoring.healthProbe.unhealthyLatency).map(_.showIfUnhealthy)
+      appHealth <- Resource.eval(AppHealth.init[F, Alert, RuntimeService](List(sourceReporter)))
+      resolver <- mkResolver[F](config.iglu)
+      httpClient <- HttpClient.resource[F](config.main.http.client)
+      _ <- HealthProbe.resource(config.main.monitoring.healthProbe.port, appHealth)
+      _ <- Webhook.resource(config.main.monitoring.webhook, appInfo, httpClient, appHealth)
+      badSink <-
+        toSink(config.main.output.bad.sink).onError(_ => Resource.eval(appHealth.beUnhealthyForRuntimeService(RuntimeService.BadSink)))
+      windowing <- Resource.eval(EventProcessingConfig.TimedWindows.build(config.main.windowing, config.main.numEagerWindows))
+      lakeWriter <- LakeWriter.build(config.main.spark, config.main.output.good)
+      lakeWriterWrapped = LakeWriter.withHandledErrors(lakeWriter, appHealth, config.main.retries, destinationSetupErrorCheck)
       metrics <- Resource.eval(Metrics.build(config.main.monitoring.metrics))
-      isHealthy = combineIsHealthy(sourceIsHealthy(config.main.monitoring.healthProbe, sourceAndAck), lakeWriterHealth)
-      _ <- HealthProbe.resource(config.main.monitoring.healthProbe.port, isHealthy)
       cpuParallelism = chooseCpuParallelism(config.main)
     } yield Environment(
-      appInfo         = appInfo,
-      source          = sourceAndAck,
-      badSink         = badSink,
-      resolver        = resolver,
-      httpClient      = httpClient,
-      lakeWriter      = lakeWriter,
-      metrics         = metrics,
-      cpuParallelism  = cpuParallelism,
-      inMemBatchBytes = config.main.inMemBatchBytes,
-      windowing       = windowing,
-      badRowMaxSize   = config.main.output.bad.maxRecordSize,
-      schemasToSkip   = config.main.skipSchemas
+      appInfo                 = appInfo,
+      source                  = sourceAndAck,
+      badSink                 = badSink,
+      resolver                = resolver,
+      httpClient              = httpClient,
+      lakeWriter              = lakeWriterWrapped,
+      metrics                 = metrics,
+      appHealth               = appHealth,
+      cpuParallelism          = cpuParallelism,
+      inMemBatchBytes         = config.main.inMemBatchBytes,
+      windowing               = windowing,
+      badRowMaxSize           = config.main.output.bad.maxRecordSize,
+      schemasToSkip           = config.main.skipSchemas,
+      respectIgluNullability  = config.main.respectIgluNullability,
+      exitOnMissingIgluSchema = config.main.exitOnMissingIgluSchema
     )
 
   private def enableSentry[F[_]: Sync](appInfo: AppInfo, config: Option[Config.Sentry]): Resource[F, Unit] =
@@ -136,16 +144,4 @@ object Environment {
       .setScale(0, BigDecimal.RoundingMode.UP)
       .toInt
 
-  private def sourceIsHealthy[F[_]: Functor](config: Config.HealthProbe, source: SourceAndAck[F]): F[HealthProbe.Status] =
-    source.isHealthy(config.unhealthyLatency).map {
-      case SourceAndAck.Healthy              => HealthProbe.Healthy
-      case unhealthy: SourceAndAck.Unhealthy => HealthProbe.Unhealthy(unhealthy.show)
-    }
-
-  // TODO: This should move to common-streams
-  private def combineIsHealthy[F[_]: Monad](status: F[HealthProbe.Status]*): F[HealthProbe.Status] =
-    status.toList.foldM[F, HealthProbe.Status](HealthProbe.Healthy) {
-      case (unhealthy: HealthProbe.Unhealthy, _) => Monad[F].pure(unhealthy)
-      case (HealthProbe.Healthy, other)          => other
-    }
 }

@@ -10,14 +10,17 @@
 
 package com.snowplowanalytics.snowplow.lakes
 
-import com.snowplowanalytics.snowplow.sources.pubsub.{PubsubSource, PubsubSourceConfig}
-import com.snowplowanalytics.snowplow.sinks.pubsub.{PubsubSink, PubsubSinkConfig}
+import cats.Show
+import cats.implicits.showInterpolator
 
-object GcpApp extends LoaderApp[PubsubSourceConfig, PubsubSinkConfig](BuildInfo) {
+import com.snowplowanalytics.snowplow.runtime.SetupExceptionMessages
 
-  override def source: SourceProvider = PubsubSource.build(_)
+sealed trait Alert
+object Alert {
 
-  override def badSink: SinkProvider = PubsubSink.resource(_)
+  final case class FailedToCreateEventsTable(causes: SetupExceptionMessages) extends Alert
 
-  override def isDestinationSetupError: DestinationSetupErrorCheck = TableFormatSetupError.check
+  implicit def showAlert: Show[Alert] = Show[Alert] { case FailedToCreateEventsTable(causes) =>
+    show"Failed to create events table: $causes"
+  }
 }

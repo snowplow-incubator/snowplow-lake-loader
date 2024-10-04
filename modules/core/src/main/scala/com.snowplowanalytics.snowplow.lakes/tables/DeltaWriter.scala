@@ -24,7 +24,7 @@ import com.snowplowanalytics.snowplow.loaders.transform.AtomicFields
 
 class DeltaWriter(config: Config.Delta) extends Writer {
 
-  private implicit def logger[F[_]: Sync] = Slf4jLogger.getLogger[F]
+  private implicit def logger[F[_]: Sync]: Logger[F] = Slf4jLogger.getLogger[F]
 
   override def sparkConfig: Map[String, String] =
     Map(
@@ -43,7 +43,7 @@ class DeltaWriter(config: Config.Delta) extends Writer {
       builder.property(k, v)
     }
 
-    AtomicFields.withLoadTstamp.foreach(f => builder.addColumn(SparkSchema.asSparkField(f)))
+    AtomicFields.withLoadTstamp.foreach(f => builder.addColumn(SparkSchema.asSparkField(f, true)))
 
     // This column needs special treatment because of the `generatedAlwaysAs` clause
     builder.addColumn {
@@ -53,7 +53,7 @@ class DeltaWriter(config: Config.Delta) extends Writer {
         .generatedAlwaysAs("CAST(load_tstamp AS DATE)")
         .nullable(false)
         .build()
-    }
+    }: Unit
 
     Logger[F].info(s"Creating Delta table ${config.location} if it does not already exist...") >>
       Sync[F]

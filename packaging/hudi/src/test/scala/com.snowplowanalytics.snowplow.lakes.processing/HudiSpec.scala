@@ -18,6 +18,9 @@ import fs2.io.file.Path
 
 class HudiSpec extends AbstractSparkSpec {
 
+  // TODO: After Hudi 1.0.0 is released, remove `skipAll` to re-enable these tests
+  override def is = skipAll ^ super.is
+
   override def target: TestConfig.Target = TestConfig.Hudi
 
   /** Reads the table back into memory, so we can make assertions on the app's output */
@@ -26,7 +29,7 @@ class HudiSpec extends AbstractSparkSpec {
     spark.sql(s"""
       CREATE TABLE events USING hudi
       LOCATION '$location'
-    """)
+    """): Unit
     spark.sql("select * from events")
   }
 
