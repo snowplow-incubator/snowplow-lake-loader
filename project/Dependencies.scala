@@ -37,7 +37,7 @@ object Dependencies {
     val hudiAws        = "1.0.0-beta2"
     val iceberg        = "1.5.2"
     val hadoop         = "3.4.0"
-    val gcsConnector   = "hadoop3-2.2.17"
+    val gcsConnector   = "hadoop3-2.2.25"
     val biglakeIceberg = "0.1.0"
     val hive           = "3.1.3"
 
@@ -50,20 +50,15 @@ object Dependencies {
     val awsRegistry = "1.1.20"
 
     // Snowplow
-    val streams    = "0.8.0-M4"
+    val streams    = "0.8.0-M5"
     val igluClient = "3.2.0"
 
     // Transitive overrides
-    val protobuf = "3.25.1"
-    val snappy   = "1.1.10.5"
-    val thrift   = "0.18.1"
-    val netty    = "4.1.109.Final"
-
-    /**
-     * The Lake Loader currently does not work with pubsub SDK versions later than 1.125.10. It
-     * appears to be an incompatibility in transitive dependencies, (e.g. grpc).
-     */
-    val pubsubSdk = "1.125.10"
+    val protobuf  = "3.25.1"
+    val snappy    = "1.1.10.5"
+    val thrift    = "0.18.1"
+    val netty     = "4.1.109.Final"
+    val pubsubSdk = "1.132.3"
 
     // tests
     val specs2           = "4.20.0"
@@ -179,8 +174,8 @@ object Dependencies {
   ) ++ commonRuntimeDependencies
 
   val gcpDependencies = Seq(
-    pubsub.exclude("com.google.cloud", "google-cloud-pubsub"),
-    pubsubSdk, // replace pubsub sdk with an earlier version
+    pubsub,
+    pubsubSdk,
     gcsConnector
   ) ++ commonRuntimeDependencies
 
