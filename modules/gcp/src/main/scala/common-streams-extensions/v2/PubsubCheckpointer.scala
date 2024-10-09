@@ -88,16 +88,9 @@ class PubsubCheckpointer[F[_]: Async](
       ackDatas <- refAckIds.modify(m => (m.removedAll(c), c.flatMap(m.get)))
       grouped = ackDatas.groupBy(_.channelAffinity)
       _ <- grouped.toVector.parTraverse_ { case (channelAffinity, ackDatas) =>
-             ackDatas.flatMap(_.ackIds).grouped(1000).toVector.traverse_ { ackIds =>
-               // A nack is just a modack with zero duration
-               Utils
-                 .modAck[F](subscription, stub, ackIds, Duration.Zero, channelAffinity)
-                 .retryingOnTransientGrpcFailures
-                 .recoveringOnGrpcInvalidArgument { s =>
-                   // This can happen if ack IDs have expired before we acked
-                   Logger[F].info(s"Ignoring error from GRPC when acking: ${s.getDescription}")
-                 }
-             }
+             val ackIds = ackDatas.flatMap(_.ackIds)
+             // A nack is just a modack with zero duration
+             Utils.modAck[F](subscription, stub, ackIds, Duration.Zero, channelAffinity)
            }
     } yield ()
 }

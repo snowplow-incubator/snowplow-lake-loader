@@ -23,7 +23,11 @@ case class PubsubSourceConfigV2(
   durationPerAckExtension: FiniteDuration,
   minRemainingDeadline: Double,
   gcpUserAgent: GcpUserAgent,
-  maxPullsPerTransportChannel: Int
+  maxPullsPerTransportChannel: Int,
+  progressTimeout: FiniteDuration,
+  modackOnProgressTimeout: Boolean,
+  cancelOnProgressTimeout: Boolean,
+  consistentClientId: Boolean
 )
 
 object PubsubSourceConfigV2 {
