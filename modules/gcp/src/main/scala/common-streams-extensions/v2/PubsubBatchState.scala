@@ -7,6 +7,8 @@
  */
 package com.snowplowanalytics.snowplow.sources.pubsub.v2
 
+import cats.data.NonEmptyVector
+
 import java.time.Instant
 
 /**
@@ -23,6 +25,6 @@ import java.time.Instant
  */
 private case class PubsubBatchState(
   currentDeadline: Instant,
-  ackIds: Vector[String],
+  ackIds: NonEmptyVector[String],
   channelAffinity: Int
 )

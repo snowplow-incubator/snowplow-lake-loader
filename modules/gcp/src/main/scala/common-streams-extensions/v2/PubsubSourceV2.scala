@@ -8,11 +8,10 @@
 package com.snowplowanalytics.snowplow.sources.pubsub.v2
 
 import cats.effect.{Async, Deferred, Ref, Resource, Sync}
-import cats.effect.std.{Hotswap, Queue, QueueSink}
 import cats.effect.kernel.Unique
-import cats.effect.implicits._
 import cats.implicits._
-import fs2.{Chunk, Pipe, Stream}
+import cats.effect.implicits._
+import fs2.{Chunk, Stream}
 import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 
@@ -20,13 +19,10 @@ import java.time.Instant
 
 // pubsub
 import com.google.api.gax.core.{ExecutorProvider, FixedExecutorProvider}
-import com.google.api.gax.grpc.{ChannelPoolSettings, GrpcCallContext}
-import com.google.api.gax.rpc.{ResponseObserver, StreamController}
+import com.google.api.gax.grpc.ChannelPoolSettings
 import com.google.cloud.pubsub.v1.SubscriptionAdminSettings
 import com.google.cloud.pubsub.v1.stub.SubscriberStubSettings
-import com.google.pubsub.v1.{StreamingPullRequest, StreamingPullResponse}
 import com.google.cloud.pubsub.v1.stub.{GrpcSubscriberStub, SubscriberStub}
-import io.grpc.Status
 import org.threeten.bp.{Duration => ThreetenDuration}
 
 // snowplow
@@ -34,11 +30,9 @@ import com.snowplowanalytics.snowplow.pubsub.GcpUserAgent
 import com.snowplowanalytics.snowplow.sources.SourceAndAck
 import com.snowplowanalytics.snowplow.sources.internal.{Checkpointer, LowLevelEvents, LowLevelSource}
 
-import scala.concurrent.duration.{Duration, DurationDouble, FiniteDuration}
 import scala.jdk.CollectionConverters._
-
+import scala.concurrent.duration.{Duration, FiniteDuration}
 import java.util.concurrent.{ExecutorService, Executors, LinkedBlockingQueue}
-import java.util.UUID
 
 object PubsubSourceV2 {
 
@@ -72,6 +66,7 @@ object PubsubSourceV2 {
       channelCount = chooseNumTransportChannels(config, parallelPullCount)
       stub <- Stream.resource(stubResource(config, channelCount))
       refStates <- Stream.eval(Ref[F].of(Map.empty[Unique.Token, PubsubBatchState]))
+      _ <- Stream.bracket(Sync[F].unit)(_ => nackRefStatesForShutdown(config, stub, refStates))
       _ <- Stream.eval(deferredResources.complete(PubsubCheckpointer.Resources(stub, refStates)))
     } yield Stream
       .range(0, parallelPullCount)
@@ -83,156 +78,55 @@ object PubsubSourceV2 {
     stub: SubscriberStub,
     refStates: Ref[F, Map[Unique.Token, PubsubBatchState]],
     channelAffinity: Int
-  ): Stream[F, LowLevelEvents[Vector[Unique.Token]]] = {
-    val jQueue   = new LinkedBlockingQueue[SubscriberAction]()
-    val clientId = UUID.randomUUID
-    val resource = initializeStreamingPull[F](config, stub, jQueue, channelAffinity, clientId)
-
+  ): Stream[F, LowLevelEvents[Vector[Unique.Token]]] =
     for {
-      (hotswap, _) <- Stream.resource(Hotswap(resource))
-      fs2Queue <- Stream.eval(Queue.synchronous[F, SubscriberAction])
-      _ <- extendDeadlines(config, stub, refStates, channelAffinity).spawn
-      _ <- Stream.eval(queueToQueue(config, jQueue, fs2Queue, stub, channelAffinity)).repeat.spawn
-      lle <- Stream
-               .fromQueueUnterminated(fs2Queue)
-               .through(toLowLevelEvents(config, refStates, hotswap, resource, channelAffinity))
-    } yield lle
-  }
-
-  private def queueToQueue[F[_]: Async](
-    config: PubsubSourceConfigV2,
-    jQueue: LinkedBlockingQueue[SubscriberAction],
-    fs2Queue: QueueSink[F, SubscriberAction],
-    stub: SubscriberStub,
-    channelAffinity: Int
-  ): F[Unit] =
-    resolveNextAction(jQueue).flatMap {
-      case action @ SubscriberAction.ProcessRecords(records, controller, _) =>
-        val fallback = if (config.modackOnProgressTimeout) {
-          val ackIds = records.map(_.getAckId)
-          if (config.cancelOnProgressTimeout)
-            Logger[F].debug(s"Cancelling Pubsub channel $channelAffinity for not making progress") *>
-              Sync[F].delay(controller.cancel()) *> Utils.modAck(config.subscription, stub, ackIds, Duration.Zero, channelAffinity)
-          else
-            Logger[F].debug(s"Nacking on Pubsub channel $channelAffinity for not making progress") *>
-              Sync[F].delay(controller.request(1)) *> Utils.modAck(config.subscription, stub, ackIds, Duration.Zero, channelAffinity)
-        } else {
-          if (config.cancelOnProgressTimeout)
-            Logger[F].debug(s"Cancelling Pubsub channel $channelAffinity for not making progress") *>
-              Sync[F].delay(controller.cancel()) *> fs2Queue.offer(action)
-          else
-            fs2Queue.offer(action)
-        }
-        fs2Queue.offer(action).timeoutTo(config.progressTimeout, fallback)
-      case action: SubscriberAction.SubscriberError =>
-        fs2Queue.offer(action)
+      jQueue <- Stream.emit(new LinkedBlockingQueue[SubscriberAction]())
+      _ <- Stream.bracket(Sync[F].unit)(_ => nackQueueForShutdown(config, stub, jQueue, channelAffinity))
+      streamManager <- Stream.resource(StreamManager.resource(config, stub, jQueue, channelAffinity))
+      leaseManager <- Stream.resource(LeaseManager.resource(config, stub, refStates, channelAffinity))
+      sourceCoordinator <- Stream.resource(SourceCoordinator.resource(config, streamManager, leaseManager, channelAffinity))
+      _ <- pullFromQueue(jQueue, sourceCoordinator, channelAffinity).spawn
+      tokenedAction <- Stream.eval(sourceCoordinator.pull).repeat
+    } yield {
+      val SourceCoordinator.TokenedA(token, SubscriberAction.ProcessRecords(records, _)) = tokenedAction
+      val chunk = Chunk.from(records.toVector.map(_.getMessage.getData.asReadOnlyByteBuffer()))
+      val (tstampSeconds, tstampNanos) =
+        records.toVector.map(r => (r.getMessage.getPublishTime.getSeconds, r.getMessage.getPublishTime.getNanos)).min
+      LowLevelEvents(chunk, Vector(token), Some(Instant.ofEpochSecond(tstampSeconds, tstampNanos.toLong)))
     }
 
-  /**
-   * Modify ack deadlines if we need more time to process the messages
-   *
-   * @param config
-   *   The Source configuration
-   * @param stub
-   *   The GRPC stub on which we can issue modack requests
-   * @param refStates
-   *   A map from tokens to the data held about a batch of messages received from pubsub. This
-   *   function must update the state if it extends a deadline.
-   * @param channelAffinity
-   *   Identifies the GRPC channel (TCP connection) creating these Actions. Each GRPC channel has
-   *   its own concurrent stream modifying the ack deadlines.
-   */
-  private def extendDeadlines[F[_]: Async](
-    config: PubsubSourceConfigV2,
-    stub: SubscriberStub,
-    refStates: Ref[F, Map[Unique.Token, PubsubBatchState]],
+  private def pullFromQueue[F[_]: Sync](
+    queue: LinkedBlockingQueue[SubscriberAction],
+    sourceCoordinator: SourceCoordinator[F, SubscriberAction.ProcessRecords],
     channelAffinity: Int
   ): Stream[F, Nothing] =
     Stream
-      .eval(Sync[F].realTimeInstant)
-      .evalMap { now =>
-        val minAllowedDeadline = now.plusMillis((config.minRemainingDeadline * config.durationPerAckExtension.toMillis).toLong)
-        val newDeadline        = now.plusMillis(config.durationPerAckExtension.toMillis)
-        refStates.modify { m =>
-          val toExtend = m.filter { case (_, batchState) =>
-            batchState.channelAffinity === channelAffinity && batchState.currentDeadline.isBefore(minAllowedDeadline)
-          }
-          val fixed = toExtend.view
-            .mapValues(_.copy(currentDeadline = newDeadline))
-            .toMap
-          (m ++ fixed, toExtend.values.toVector)
-        }
-      }
-      .evalMap { toExtend =>
-        if (toExtend.isEmpty)
-          Sync[F].sleep(0.5 * config.minRemainingDeadline * config.durationPerAckExtension)
-        else {
-          val ackIds = toExtend.sortBy(_.currentDeadline).flatMap(_.ackIds)
-          Utils.modAck[F](config.subscription, stub, ackIds, config.durationPerAckExtension, channelAffinity)
+      .eval {
+        Sync[F].uncancelable { poll =>
+          poll(resolveNextAction(queue))
+            .flatMap {
+              case SubscriberAction.Ready(controller) =>
+                sourceCoordinator.receiveController(controller)
+              case processRecords: SubscriberAction.ProcessRecords =>
+                sourceCoordinator.receiveItem(processRecords)
+              case SubscriberAction.SubscriberError(t) =>
+                if (PubsubRetryOps.isRetryableException(t)) {
+                  // Log at debug level because retryable errors are very frequent.
+                  // In particular, if the pubsub subscription is empty then a streaming pull returns UNAVAILABLE
+                  Logger[F].debug(s"Retryable error on PubSub channel $channelAffinity: ${t.getMessage}") >>
+                    sourceCoordinator.handleStreamError
+                } else if (t.isInstanceOf[java.util.concurrent.CancellationException]) {
+                  // The SourceCoordinator caused this by cancelling the stream.
+                  // No need to inform the SourceCoordinator.
+                  Logger[F].debug("Cancellation exception on PubSub channel")
+                } else {
+                  Logger[F].error(t)("Exception from PubSub source") >> Sync[F].raiseError[Unit](t)
+                }
+            }
         }
       }
       .repeat
       .drain
-
-  /**
-   * Pipe from SubscriberAction to LowLevelEvents TODO: Say what else this does
-   *
-   * @param config
-   *   The source configuration
-   * @param refStates
-   *   A map from tokens to the data held about a batch of messages received from pubsub. This
-   *   function must update the state to add new batches.
-   * @param hotswap
-   *   A Hotswap wrapping the Resource that is populating the queue
-   * @param toSwap
-   *   Initializes the Resource which is populating the queue. If we get an error from the queue
-   *   then need to swap in the new Resource into the Hotswap
-   * @param channelAffinity
-   *   Identifies the GRPC channel (TCP connection) creating these Actions. Each GRPC channel has
-   *   its own queue, observer, and puller.
-   */
-  private def toLowLevelEvents[F[_]: Async](
-    config: PubsubSourceConfigV2,
-    refStates: Ref[F, Map[Unique.Token, PubsubBatchState]],
-    hotswap: Hotswap[F, Unit],
-    toSwap: Resource[F, Unit],
-    channelAffinity: Int
-  ): Pipe[F, SubscriberAction, LowLevelEvents[Vector[Unique.Token]]] =
-    _.flatMap {
-      case SubscriberAction.ProcessRecords(records, controller, timeReceived) =>
-        val chunk = Chunk.from(records.map(_.getMessage.getData.asReadOnlyByteBuffer()))
-        val (tstampSeconds, tstampNanos) =
-          records.map(r => (r.getMessage.getPublishTime.getSeconds, r.getMessage.getPublishTime.getNanos)).min
-        val ackIds = records.map(_.getAckId)
-        Stream.eval {
-          for {
-            token <- Unique[F].unique
-            currentDeadline = timeReceived.plusMillis(config.durationPerAckExtension.toMillis)
-            _ <- refStates.update(_ + (token -> PubsubBatchState(currentDeadline, ackIds, channelAffinity)))
-            _ <- Sync[F].delay(controller.request(1))
-          } yield LowLevelEvents(chunk, Vector(token), Some(Instant.ofEpochSecond(tstampSeconds, tstampNanos.toLong)))
-        }
-      case SubscriberAction.SubscriberError(t) =>
-        if (PubsubRetryOps.isRetryableException(t)) {
-          // val nextDelay = (2 * delayOnSubscriberError).min((10 + scala.util.Random.nextDouble()).second)
-          // Log at debug level because retryable errors are very frequent.
-          // In particular, if the pubsub subscription is empty then a streaming pull returns UNAVAILABLE
-          Stream.eval {
-            Logger[F].debug(s"Retryable error on PubSub channel $channelAffinity: ${t.getMessage}") *>
-              hotswap.clear *>
-              Async[F].sleep((1.0 + scala.util.Random.nextDouble()).second) *> // TODO expotential backoff
-              hotswap.swap(toSwap)
-          }.drain
-        } else if (t.isInstanceOf[java.util.concurrent.CancellationException]) {
-          Stream.eval {
-            Logger[F].debug("Cancellation exception on PubSub channel") *>
-              hotswap.clear *>
-              hotswap.swap(toSwap)
-          }.drain
-        } else {
-          Stream.eval(Logger[F].error(t)("Exception from PubSub source")) *> Stream.raiseError[F](t)
-        }
-    }
 
   private def resolveNextAction[F[_]: Sync, A](queue: LinkedBlockingQueue[A]): F[A] =
     Sync[F].delay(Option[A](queue.poll)).flatMap {
@@ -276,58 +170,30 @@ object PubsubSourceV2 {
     Resource.make(Sync[F].delay(GrpcSubscriberStub.create(stubSettings)))(stub => Sync[F].blocking(stub.shutdownNow))
   }
 
-  private def initializeStreamingPull[F[_]: Sync](
+  private def nackRefStatesForShutdown[F[_]: Async](
     config: PubsubSourceConfigV2,
-    subStub: SubscriberStub,
-    actionQueue: LinkedBlockingQueue[SubscriberAction],
-    channelAffinity: Int,
-    clientId: UUID
-  ): Resource[F, Unit] = {
-
-    val observer = new ResponseObserver[StreamingPullResponse] {
-      var controller: StreamController = _
-      override def onResponse(response: StreamingPullResponse): Unit = {
-        val messages = response.getReceivedMessagesList.asScala.toVector
-        if (messages.isEmpty) {
-          controller.request(1)
-        } else {
-          val action = SubscriberAction.ProcessRecords(messages, controller, Instant.now())
-          actionQueue.put(action)
-        }
+    stub: SubscriberStub,
+    refStates: Ref[F, Map[Unique.Token, PubsubBatchState]]
+  ): F[Unit] =
+    refStates.getAndSet(Map.empty).flatMap { m =>
+      m.values.groupBy(_.channelAffinity).toVector.parTraverse_ { case (channelAffinity, batches) =>
+        Utils.modAck(config.subscription, stub, batches.flatMap(_.ackIds.toVector).toVector, Duration.Zero, channelAffinity)
       }
-
-      override def onStart(c: StreamController): Unit = {
-        controller = c
-        controller.disableAutoInboundFlowControl()
-        controller.request(1)
-      }
-
-      override def onError(t: Throwable): Unit =
-        actionQueue.put(SubscriberAction.SubscriberError(t))
-
-      override def onComplete(): Unit = ()
-
     }
 
-    val context = GrpcCallContext.createDefault.withChannelAffinity(channelAffinity)
-
-    val request = StreamingPullRequest.newBuilder
-      .setSubscription(config.subscription.show)
-      .setStreamAckDeadlineSeconds(config.durationPerAckExtension.toSeconds.toInt)
-      .setClientId(if (config.consistentClientId) clientId.toString else UUID.randomUUID.toString)
-      .setMaxOutstandingMessages(0)
-      .setMaxOutstandingBytes(0)
-      .build
-
-    Resource
-      .make(Sync[F].delay(subStub.streamingPullCallable.splitCall(observer, context))) { stream =>
-        Sync[F].delay(stream.closeSendWithError(Status.CANCELLED.asException))
-      }
-      .evalMap { stream =>
-        Sync[F].delay(stream.send(request))
-      }
-      .void
-
+  private def nackQueueForShutdown[F[_]: Async](
+    config: PubsubSourceConfigV2,
+    stub: SubscriberStub,
+    queue: LinkedBlockingQueue[SubscriberAction],
+    channelAffinity: Int
+  ): F[Unit] = {
+    val ackIds = queue.iterator.asScala.toVector.flatMap {
+      case SubscriberAction.ProcessRecords(records, _) =>
+        records.toVector.map(_.getAckId)
+      case _ =>
+        Vector.empty
+    }
+    Utils.modAck(config.subscription, stub, ackIds, Duration.Zero, channelAffinity)
   }
 
   private def executorResource[F[_]: Sync, E <: ExecutorService](make: F[E]): Resource[F, E] =

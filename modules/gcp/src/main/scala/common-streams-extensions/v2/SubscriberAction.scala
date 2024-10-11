@@ -7,6 +7,8 @@
  */
 package com.snowplowanalytics.snowplow.sources.pubsub.v2
 
+import cats.data.NonEmptyVector
+
 import com.google.pubsub.v1.ReceivedMessage
 import com.google.api.gax.rpc.StreamController
 import java.time.Instant
@@ -24,15 +26,20 @@ private object SubscriberAction {
    *
    * @param records
    *   The received records
-   * @param streamController
-   *   The GRPC stream controller. When this action is handed over to cats-effect/fs2 world then we
-   *   must tell the stream controller we are ready to receive more events
    * @param timeRecieved
    *   Timestamp the records were pulled over the GRPC stream
    */
   case class ProcessRecords(
-    records: Vector[ReceivedMessage],
-    streamController: StreamController,
+    records: NonEmptyVector[ReceivedMessage],
     timeReceived: Instant
   ) extends SubscriberAction
+
+  /**
+   * The GRPC stream is ready to send us messages
+   *
+   * @param streamController
+   *   The GRPC stream controller. When this action is handed over to cats-effect/fs2 world then we
+   *   must tell the stream controller we are ready to receive more events
+   */
+  case class Ready(controller: StreamController) extends SubscriberAction
 }

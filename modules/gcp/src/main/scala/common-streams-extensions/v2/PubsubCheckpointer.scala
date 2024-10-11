@@ -60,7 +60,7 @@ class PubsubCheckpointer[F[_]: Async](
       ackDatas <- refAckIds.modify(m => (m.removedAll(c), c.flatMap(m.get)))
       grouped = ackDatas.groupBy(_.channelAffinity)
       _ <- grouped.toVector.parTraverse_ { case (channelAffinity, ackDatas) =>
-             ackDatas.flatMap(_.ackIds).grouped(1000).toVector.traverse_ { ackIds =>
+             ackDatas.flatMap(_.ackIds.toVector).grouped(1000).toVector.traverse_ { ackIds =>
                val request = AcknowledgeRequest.newBuilder.setSubscription(subscription.show).addAllAckIds(ackIds.asJava).build
                val context = GrpcCallContext.createDefault.withChannelAffinity(channelAffinity)
                val attempt = for {
@@ -88,7 +88,7 @@ class PubsubCheckpointer[F[_]: Async](
       ackDatas <- refAckIds.modify(m => (m.removedAll(c), c.flatMap(m.get)))
       grouped = ackDatas.groupBy(_.channelAffinity)
       _ <- grouped.toVector.parTraverse_ { case (channelAffinity, ackDatas) =>
-             val ackIds = ackDatas.flatMap(_.ackIds)
+             val ackIds = ackDatas.flatMap(_.ackIds.toVector)
              // A nack is just a modack with zero duration
              Utils.modAck[F](subscription, stub, ackIds, Duration.Zero, channelAffinity)
            }

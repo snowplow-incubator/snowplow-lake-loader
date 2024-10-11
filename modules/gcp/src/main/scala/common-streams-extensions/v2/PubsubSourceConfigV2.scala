@@ -25,9 +25,8 @@ case class PubsubSourceConfigV2(
   gcpUserAgent: GcpUserAgent,
   maxPullsPerTransportChannel: Int,
   progressTimeout: FiniteDuration,
-  modackOnProgressTimeout: Boolean,
-  cancelOnProgressTimeout: Boolean,
-  consistentClientId: Boolean
+  prefetchMin: Int,
+  prefetchMax: Int
 )
 
 object PubsubSourceConfigV2 {
