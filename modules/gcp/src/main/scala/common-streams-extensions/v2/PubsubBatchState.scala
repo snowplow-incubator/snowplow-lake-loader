@@ -17,12 +17,8 @@ import java.time.Instant
  *   in the future. This is updated over time if we approach a deadline.
  * @param ackIds
  *   The IDs which are needed to ack all messages in the batch
- * @param channelAffinity
- *   Corresponds to the GRPC channel (TCP connection) on which this batch was pulled. We ack and
- *   modack on the same channel from where the messages came.
  */
 private case class PubsubBatchState(
   currentDeadline: Instant,
-  ackIds: Vector[String],
-  channelAffinity: Int
+  ackIds: Vector[String]
 )

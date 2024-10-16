@@ -11,7 +11,6 @@ import cats.effect.{Async, Sync}
 import cats.implicits._
 import org.typelevel.log4cats.Logger
 
-import com.google.api.gax.grpc.GrpcCallContext
 import com.google.cloud.pubsub.v1.stub.SubscriberStub
 import com.google.pubsub.v1.ModifyAckDeadlineRequest
 import com.snowplowanalytics.snowplow.sources.pubsub.v2.PubsubRetryOps.implicits._
@@ -25,8 +24,7 @@ private object Utils {
     subscription: PubsubSourceConfigV2.Subscription,
     stub: SubscriberStub,
     ackIds: Vector[String],
-    duration: FiniteDuration,
-    channelAffinity: Int
+    duration: FiniteDuration
   ): F[Unit] =
     ackIds.grouped(1000).toVector.traverse_ { group =>
       val request = ModifyAckDeadlineRequest.newBuilder
@@ -34,9 +32,8 @@ private object Utils {
         .addAllAckIds(group.asJava)
         .setAckDeadlineSeconds(duration.toSeconds.toInt)
         .build
-      val context = GrpcCallContext.createDefault.withChannelAffinity(channelAffinity)
       val io = for {
-        apiFuture <- Sync[F].delay(stub.modifyAckDeadlineCallable.futureCall(request, context))
+        apiFuture <- Sync[F].delay(stub.modifyAckDeadlineCallable.futureCall(request))
         _ <- FutureInterop.fromFuture_(apiFuture)
       } yield ()
 

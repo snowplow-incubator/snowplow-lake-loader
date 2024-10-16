@@ -7,13 +7,11 @@
  */
 package com.snowplowanalytics.snowplow.sources.pubsub.v2
 
-import cats.effect.implicits._
 import cats.implicits._
 import cats.effect.kernel.Unique
 import cats.effect.{Async, Deferred, Ref, Sync}
 import com.google.cloud.pubsub.v1.stub.SubscriberStub
 import com.google.pubsub.v1.AcknowledgeRequest
-import com.google.api.gax.grpc.GrpcCallContext
 import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 
@@ -58,21 +56,17 @@ class PubsubCheckpointer[F[_]: Async](
     for {
       Resources(stub, refAckIds) <- deferredResources.get
       ackDatas <- refAckIds.modify(m => (m.removedAll(c), c.flatMap(m.get)))
-      grouped = ackDatas.groupBy(_.channelAffinity)
-      _ <- grouped.toVector.parTraverse_ { case (channelAffinity, ackDatas) =>
-             ackDatas.flatMap(_.ackIds).grouped(1000).toVector.traverse_ { ackIds =>
-               val request = AcknowledgeRequest.newBuilder.setSubscription(subscription.show).addAllAckIds(ackIds.asJava).build
-               val context = GrpcCallContext.createDefault.withChannelAffinity(channelAffinity)
-               val attempt = for {
-                 apiFuture <- Sync[F].delay(stub.acknowledgeCallable.futureCall(request, context))
-                 _ <- FutureInterop.fromFuture[F, com.google.protobuf.Empty](apiFuture)
-               } yield ()
-               attempt.retryingOnTransientGrpcFailures
-                 .recoveringOnGrpcInvalidArgument { s =>
-                   // This can happen if ack IDs have expired before we acked
-                   Logger[F].info(s"Ignoring error from GRPC when acking: ${s.getDescription}")
-                 }
-             }
+      _ <- ackDatas.flatMap(_.ackIds).grouped(1000).toVector.traverse_ { ackIds =>
+             val request = AcknowledgeRequest.newBuilder.setSubscription(subscription.show).addAllAckIds(ackIds.asJava).build
+             val attempt = for {
+               apiFuture <- Sync[F].delay(stub.acknowledgeCallable.futureCall(request))
+               _ <- FutureInterop.fromFuture[F, com.google.protobuf.Empty](apiFuture)
+             } yield ()
+             attempt.retryingOnTransientGrpcFailures
+               .recoveringOnGrpcInvalidArgument { s =>
+                 // This can happen if ack IDs have expired before we acked
+                 Logger[F].info(s"Ignoring error from GRPC when acking: ${s.getDescription}")
+               }
            }
     } yield ()
 
@@ -86,12 +80,9 @@ class PubsubCheckpointer[F[_]: Async](
     for {
       Resources(stub, refAckIds) <- deferredResources.get
       ackDatas <- refAckIds.modify(m => (m.removedAll(c), c.flatMap(m.get)))
-      grouped = ackDatas.groupBy(_.channelAffinity)
-      _ <- grouped.toVector.parTraverse_ { case (channelAffinity, ackDatas) =>
-             val ackIds = ackDatas.flatMap(_.ackIds)
-             // A nack is just a modack with zero duration
-             Utils.modAck[F](subscription, stub, ackIds, Duration.Zero, channelAffinity)
-           }
+      ackIds = ackDatas.flatMap(_.ackIds)
+      // A nack is just a modack with zero duration
+      _ <- Utils.modAck[F](subscription, stub, ackIds, Duration.Zero)
     } yield ()
 }
 

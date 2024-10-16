@@ -8,8 +8,10 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     steps:
+      - name: Install sbt
+        uses: sbt/setup-sbt@v1
       - uses: actions/checkout@v2
       - uses: coursier/cache-action@v6
       - name: Set up JDK 11
@@ -24,18 +26,56 @@ jobs:
   publish_docker:
     needs: test
     if: github.ref_type == 'tag'
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     strategy:
       matrix:
         sbtProject:
+          - azure
           - gcp
+          - aws
+          - awsHudi
+          - gcpHudi
+          - azureHudi
+          - gcpBiglake
         include:
+          - sbtProject: azure
+            runSnyk: true
+            targetDir: "modules/azure/target"
+            dockerSuffix: azure
+            dockerTagSuffix: ""
           - sbtProject: gcp
             runSnyk: true
             targetDir: "modules/gcp/target"
             dockerSuffix: gcp
             dockerTagSuffix: ""
+          - sbtProject: aws
+            runSnyk: true
+            targetDir: "modules/aws/target"
+            dockerSuffix: aws
+            dockerTagSuffix: ""
+          - sbtProject: azureHudi
+            runSnyk: false
+            targetDir: "packaging/hudi/target/azure"
+            dockerSuffix: azure
+            dockerTagSuffix: "-hudi"
+          - sbtProject: gcpHudi
+            runSnyk: false
+            targetDir: "packaging/hudi/target/gcp"
+            dockerSuffix: gcp
+            dockerTagSuffix: "-hudi"
+          - sbtProject: awsHudi
+            runSnyk: false
+            targetDir: "packaging/hudi/target/aws"
+            dockerSuffix: aws
+            dockerTagSuffix: "-hudi"
+          - sbtProject: gcpBiglake
+            runSnyk: false
+            targetDir: "packaging/biglake/target/gcp"
+            dockerSuffix: gcp
+            dockerTagSuffix: "-biglake"
     steps:
+      - name: Install sbt
+        uses: sbt/setup-sbt@v1
       - name: Checkout Github
         uses: actions/checkout@v2
       - uses: coursier/cache-action@v6

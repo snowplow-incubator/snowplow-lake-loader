@@ -23,8 +23,9 @@ case class PubsubSourceConfigV2(
   durationPerAckExtension: FiniteDuration,
   minRemainingDeadline: Double,
   gcpUserAgent: GcpUserAgent,
-  maxPullsPerTransportChannel: Int,
-  maxMessagesPerPull: Int
+  maxMessagesPerPull: Int,
+  debounceRequests: FiniteDuration,
+  prefetch: Int
 )
 
 object PubsubSourceConfigV2 {
