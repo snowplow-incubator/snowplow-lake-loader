@@ -170,7 +170,8 @@ object Dependencies {
     kafka,
     azureIdentity,
     hadoopAzure,
-    hadoopClient
+    hadoopClient,
+    specs2
   ) ++ commonRuntimeDependencies
 
   val gcpDependencies = Seq(

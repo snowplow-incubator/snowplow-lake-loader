@@ -10,7 +10,11 @@
 
 package com.snowplowanalytics.snowplow.lakes
 
+import java.net.UnknownHostException
+
 import scala.reflect._
+
+import org.apache.hadoop.fs.azurebfs.contracts.exceptions.AbfsRestOperationException
 
 import com.snowplowanalytics.snowplow.sources.kafka.{KafkaSource, KafkaSourceConfig}
 import com.snowplowanalytics.snowplow.sinks.kafka.{KafkaSink, KafkaSinkConfig}
@@ -35,5 +39,23 @@ object AzureApp extends LoaderApp[KafkaSourceConfig, KafkaSinkConfig](BuildInfo)
 
   override def badSink: SinkProvider = KafkaSink.resource(_, classTag[SinkAuthHandler])
 
-  override def isDestinationSetupError: DestinationSetupErrorCheck = TableFormatSetupError.check
+  override def isDestinationSetupError: DestinationSetupErrorCheck = {
+    // Authentication issue (wrong OAuth endpoint, wrong client id, wrong secret)
+    case AuthenticationError(e) =>
+      e
+    // Wrong container name
+    case e: AbfsRestOperationException if e.getStatusCode == 404 =>
+      s"The specified filesystem does not exist (e.g. wrong container name)"
+    // Service principal missing permissions for container (role assignement missing or wrong role)
+    case e: AbfsRestOperationException if e.getStatusCode == 403 =>
+      s"Missing permissions for the destination (needs \"Storage Blob Data Contributor\" assigned to the service principal for the container)"
+    // Soft delete not disabled
+    case e: AbfsRestOperationException if e.getStatusCode == 409 =>
+      "Blob soft delete must be disabled on the storage account"
+    case _: UnknownHostException =>
+      "Wrong storage name"
+    // Exceptions common to the table format - Delta/Iceberg/Hudi
+    case TableFormatSetupError.check(t) =>
+      t
+  }
 }
