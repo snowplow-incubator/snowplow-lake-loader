@@ -10,6 +10,8 @@
 
 package com.snowplowanalytics.snowplow.lakes.tables
 
+import java.net.InetAddress
+
 import cats.implicits._
 import cats.effect.Sync
 import org.typelevel.log4cats.Logger
@@ -55,7 +57,16 @@ class DeltaWriter(config: Config.Delta) extends Writer {
         .build()
     }: Unit
 
+    // For Azure a wrong storage name means an invalid hostname and infinite retries when creating the Delta table
+    // If the hostname is invalid, UnknownHostException gets thrown
+    val checkHostname =
+      if (List("abfs", "abfss").contains(config.location.getScheme))
+        Sync[F].blocking(InetAddress.getByName(config.location.getHost()))
+      else
+        Sync[F].unit
+
     Logger[F].info(s"Creating Delta table ${config.location} if it does not already exist...") >>
+      checkHostname >>
       Sync[F]
         .blocking(builder.execute())
         .void
