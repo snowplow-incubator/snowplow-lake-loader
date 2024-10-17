@@ -12,6 +12,8 @@ package com.snowplowanalytics.snowplow.lakes
 
 import scala.reflect._
 
+import org.apache.hadoop.fs.azurebfs.contracts.exceptions.AbfsRestOperationException
+
 import com.snowplowanalytics.snowplow.sources.kafka.{KafkaSource, KafkaSourceConfig}
 import com.snowplowanalytics.snowplow.sinks.kafka.{KafkaSink, KafkaSinkConfig}
 import com.snowplowanalytics.snowplow.azure.AzureAuthenticationCallbackHandler
@@ -35,5 +37,18 @@ object AzureApp extends LoaderApp[KafkaSourceConfig, KafkaSinkConfig](BuildInfo)
 
   override def badSink: SinkProvider = KafkaSink.resource(_, classTag[SinkAuthHandler])
 
-  override def isDestinationSetupError: DestinationSetupErrorCheck = TableFormatSetupError.check
+  override def isDestinationSetupError: DestinationSetupErrorCheck = {
+    // Authentication issue (wrong OAuth endpoint, wrong client id, wrong secret..)
+    case e: AbfsRestOperationException if e.getStatusCode == -1 =>
+      e.getErrorMessage()
+    // Wrong container name
+    case e: AbfsRestOperationException if e.getStatusCode() == 404 =>
+      s"${e.getErrorMessage()} (e.g. wrong container name)"
+    // Service principal missing permissions for container (role assignement missing or wrong role)
+    case e: AbfsRestOperationException if e.getStatusCode() == 403 =>
+      s"Missing permissions for the destination (needs \"Storage Blob Data Contributor\" assigned to the service principal for the container)"
+    // Exceptions common to the table format - Delta/Iceberg/Hudi
+    case TableFormatSetupError.check(t) =>
+      t
+  }
 }
