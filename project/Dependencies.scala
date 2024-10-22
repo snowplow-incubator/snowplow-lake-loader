@@ -79,14 +79,15 @@ object Dependencies {
   }
 
   // spark and hadoop
-  val delta        = "io.delta"                   %% "delta-spark"                                            % V.delta
-  val hudi         = "org.apache.hudi"            %% s"hudi-spark${V.Spark.forHudiMinor}-bundle"              % V.hudi
-  val iceberg      = "org.apache.iceberg"         %% s"iceberg-spark-runtime-${V.Spark.forIcebergDeltaMinor}" % V.iceberg
-  val hadoopClient = "org.apache.hadoop"           % "hadoop-client-runtime"                                  % V.hadoop
-  val hadoopAzure  = "org.apache.hadoop"           % "hadoop-azure"                                           % V.hadoop
-  val hadoopAws    = "org.apache.hadoop"           % "hadoop-aws"                                             % V.hadoop
-  val gcsConnector = "com.google.cloud.bigdataoss" % "gcs-connector"                                          % V.gcsConnector
-  val hiveCommon   = "org.apache.hive"             % "hive-common"                                            % V.hive
+  val delta         = "io.delta"                   %% "delta-spark"                                            % V.delta
+  val deltaDynamodb = "io.delta"                    % "delta-storage-s3-dynamodb"                              % V.delta
+  val hudi          = "org.apache.hudi"            %% s"hudi-spark${V.Spark.forHudiMinor}-bundle"              % V.hudi
+  val iceberg       = "org.apache.iceberg"         %% s"iceberg-spark-runtime-${V.Spark.forIcebergDeltaMinor}" % V.iceberg
+  val hadoopClient  = "org.apache.hadoop"           % "hadoop-client-runtime"                                  % V.hadoop
+  val hadoopAzure   = "org.apache.hadoop"           % "hadoop-azure"                                           % V.hadoop
+  val hadoopAws     = "org.apache.hadoop"           % "hadoop-aws"                                             % V.hadoop
+  val gcsConnector  = "com.google.cloud.bigdataoss" % "gcs-connector"                                          % V.gcsConnector
+  val hiveCommon    = "org.apache.hive"             % "hive-common"                                            % V.hive
 
   val hudiAws = ("org.apache.hudi" % "hudi-aws" % V.hudiAws).excludeAll(ExclusionRule(organization = "org.apache.hudi"))
 
@@ -98,6 +99,7 @@ object Dependencies {
   val awsS3         = "software.amazon.awssdk" % "s3"                    % V.awsSdk2
   val awsS3Transfer = "software.amazon.awssdk" % "s3-transfer-manager"   % V.awsSdk2
   val awsSts        = "software.amazon.awssdk" % "sts"                   % V.awsSdk2
+  val dynamodbSdk1  = "com.amazonaws"          % "aws-java-sdk-dynamodb" % V.awsSdk1
   val awsRegistry   = "software.amazon.glue"   % "schema-registry-serde" % V.awsRegistry
 
   // transitive overrides
@@ -162,8 +164,10 @@ object Dependencies {
     awsCore, // Dependency on aws sdk v1 will likely be removed in the next release of hadoop-aws
     awsS3,
     awsGlue,
+    awsSts,
     awsS3Transfer % Runtime,
-    awsSts
+    deltaDynamodb % Runtime,
+    dynamodbSdk1  % Runtime
   ) ++ commonRuntimeDependencies
 
   val azureDependencies = Seq(
