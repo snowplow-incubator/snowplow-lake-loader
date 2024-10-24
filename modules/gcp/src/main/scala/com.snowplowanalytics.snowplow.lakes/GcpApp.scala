@@ -10,6 +10,10 @@
 
 package com.snowplowanalytics.snowplow.lakes
 
+import cats.implicits._
+
+import com.google.api.client.googleapis.json.GoogleJsonResponseException
+
 import com.snowplowanalytics.snowplow.sources.pubsub.{PubsubSource, PubsubSourceConfig}
 import com.snowplowanalytics.snowplow.sinks.pubsub.{PubsubSink, PubsubSinkConfig}
 
@@ -19,5 +23,15 @@ object GcpApp extends LoaderApp[PubsubSourceConfig, PubsubSinkConfig](BuildInfo)
 
   override def badSink: SinkProvider = PubsubSink.resource(_)
 
-  override def isDestinationSetupError: DestinationSetupErrorCheck = TableFormatSetupError.check
+  override def isDestinationSetupError: DestinationSetupErrorCheck = {
+    // Destination bucket doesn't exist
+    case e: GoogleJsonResponseException if e.getDetails.getCode === 404 =>
+      "The specified bucket does not exist"
+    // Permissions missing for Cloud Storage
+    case e: GoogleJsonResponseException if e.getDetails.getCode === 403 =>
+      e.getDetails.getMessage
+    // Exceptions common to the table format - Delta/Iceberg/Hudi
+    case TableFormatSetupError.check(t) =>
+      t
+  }
 }

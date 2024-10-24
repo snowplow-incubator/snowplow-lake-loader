@@ -12,6 +12,8 @@ package com.snowplowanalytics.snowplow.lakes
 
 import org.apache.iceberg.exceptions.{ForbiddenException => IcebergForbiddenException, NotFoundException => IcebergNotFoundException}
 
+import org.apache.spark.sql.delta.DeltaAnalysisException
+
 object TableFormatSetupError {
 
   // Check if given exception is specific to iceberg format
@@ -22,5 +24,7 @@ object TableFormatSetupError {
       case e: IcebergForbiddenException =>
         // No permission to create a table in Glue catalog
         e.getMessage
+      case e: DeltaAnalysisException if e.errorClass == Some("DELTA_CREATE_TABLE_WITH_NON_EMPTY_LOCATION") =>
+        "Destination not empty and not a Delta table"
     }
 }
