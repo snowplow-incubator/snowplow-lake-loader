@@ -14,6 +14,8 @@ import java.net.UnknownHostException
 
 import scala.reflect._
 
+import cats.implicits._
+
 import org.apache.hadoop.fs.azurebfs.contracts.exceptions.AbfsRestOperationException
 
 import com.snowplowanalytics.snowplow.sources.kafka.{KafkaSource, KafkaSourceConfig}
@@ -44,13 +46,13 @@ object AzureApp extends LoaderApp[KafkaSourceConfig, KafkaSinkConfig](BuildInfo)
     case AuthenticationError(e) =>
       e
     // Wrong container name
-    case e: AbfsRestOperationException if e.getStatusCode == 404 =>
+    case e: AbfsRestOperationException if e.getStatusCode === 404 =>
       s"The specified filesystem does not exist (e.g. wrong container name)"
     // Service principal missing permissions for container (role assignement missing or wrong role)
-    case e: AbfsRestOperationException if e.getStatusCode == 403 =>
+    case e: AbfsRestOperationException if e.getStatusCode === 403 =>
       s"Missing permissions for the destination (needs \"Storage Blob Data Contributor\" assigned to the service principal for the container)"
     // Soft delete not disabled
-    case e: AbfsRestOperationException if e.getStatusCode == 409 =>
+    case e: AbfsRestOperationException if e.getStatusCode === 409 =>
       "Blob soft delete must be disabled on the storage account"
     case _: UnknownHostException =>
       "Wrong storage name"
