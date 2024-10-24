@@ -35,6 +35,7 @@ class IcebergWriter(config: Config.Iceberg) extends Writer {
   override def sparkConfig: Map[String, String] =
     Map(
       "spark.sql.extensions" -> "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions",
+      "spark.sql.debug.maxToStringFields" -> "65536",
       s"spark.sql.catalog.$sparkCatalog" -> "org.apache.iceberg.spark.SparkCatalog",
       s"spark.sql.catalog.$sparkCatalog.io-impl" -> "org.apache.iceberg.io.ResolvingFileIO"
     ) ++ catalogConfig.map { case (k, v) =>
