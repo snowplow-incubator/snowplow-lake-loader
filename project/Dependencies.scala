@@ -15,50 +15,50 @@ object Dependencies {
     object Spark {
 
       // A version of Spark which is compatible with the current version of Iceberg and Delta
-      val forIcebergDelta      = "3.5.1"
+      val forIcebergDelta      = "3.5.3"
       val forIcebergDeltaMinor = "3.5"
 
       // Hudi can use a different version of Spark because we bundle a separate Docker image
       // This version of Spark must be compatible with the current version of Hudi
-      val forHudi      = "3.5.1"
+      val forHudi      = "3.5.3"
       val forHudiMinor = "3.5"
     }
 
     // Scala
     val catsEffect       = "3.5.4"
     val decline          = "2.4.1"
-    val circe            = "0.14.3"
-    val http4s           = "0.23.16"
+    val circe            = "0.14.4"
+    val http4s           = "0.23.29"
     val betterMonadicFor = "0.3.1"
 
     // Spark
-    val delta          = "3.2.0"
-    val hudi           = "0.15.0"
-    val hudiAws        = "1.0.0-beta2"
-    val iceberg        = "1.5.2"
-    val hadoop         = "3.4.0"
-    val gcsConnector   = "hadoop3-2.2.25"
-    val biglakeIceberg = "0.1.0"
-    val hive           = "3.1.3"
+    val delta        = "3.2.1"
+    val hudi         = "0.15.0"
+    val hudiAws      = "1.0.0-beta2"
+    val iceberg      = "1.6.1"
+    val hadoop       = "3.4.1"
+    val gcsConnector = "hadoop3-2.2.25"
+    val hive         = "3.1.3"
 
     // java
     val slf4j       = "2.0.13"
-    val azureSdk    = "1.11.4"
-    val sentry      = "6.25.2"
-    val awsSdk1     = "1.12.646"
-    val awsSdk2     = "2.25.16" // Match common-streams
+    val azureSdk    = "1.12.2"
+    val sentry      = "7.16.0"
+    val awsSdk1     = "1.12.777"
+    val awsSdk2     = "2.29.0" // Match common-streams
     val awsRegistry = "1.1.20"
 
     // Snowplow
-    val streams    = "0.8.0-M5"
-    val igluClient = "3.2.0"
+    val streams    = "0.8.0"
+    val igluClient = "4.0.0"
 
     // Transitive overrides
-    val protobuf  = "3.25.1"
+    val protobuf  = "3.25.5"
     val snappy    = "1.1.10.5"
-    val thrift    = "0.18.1"
-    val netty     = "4.1.109.Final"
-    val pubsubSdk = "1.132.3"
+    val thrift    = "0.21.0"
+    val netty     = "4.1.114.Final"
+    val pubsubSdk = "1.134.1"
+    val avro      = "1.11.4"
 
     // tests
     val specs2           = "4.20.0"
@@ -110,6 +110,7 @@ object Dependencies {
   val netty      = "io.netty"            % "netty-all"                          % V.netty
   val awsCore    = "com.amazonaws"       % "aws-java-sdk-core"                  % V.awsSdk1
   val pubsubSdk  = "com.google.cloud"    % "google-cloud-pubsub"                % V.pubsubSdk
+  val avro       = "org.apache.avro"     % "avro"                               % V.avro
 
   // snowplow
   val streamsCore      = "com.snowplowanalytics" %% "streams-core"             % V.streams
@@ -129,7 +130,8 @@ object Dependencies {
     slf4j    % Runtime,
     protobuf % Runtime,
     netty    % Runtime,
-    snappy   % Runtime
+    snappy   % Runtime,
+    avro     % Runtime
   )
 
   val icebergDeltaRuntimeDependencies = Seq(
