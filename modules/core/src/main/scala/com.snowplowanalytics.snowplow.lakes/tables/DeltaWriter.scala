@@ -104,4 +104,11 @@ class DeltaWriter(config: Config.Delta) extends Writer {
         }
     }
 
+  /**
+   * Delta tolerates async deletes; in other words when we delete a file, there is no strong
+   * requirement that the file must be deleted immediately. Delta uses unique file names and never
+   * re-writes a file that was previously deleted
+   */
+  override def toleratesAsyncDelete: Boolean = true
+
 }

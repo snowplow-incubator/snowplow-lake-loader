@@ -107,4 +107,10 @@ class IcebergWriter(config: Config.Iceberg) extends Writer {
       }
       .mkString(", ")
 
+  /**
+   * Iceberg tolerates async deletes; in other words when we delete a file, there is no strong
+   * requirement that the file must be deleted immediately. Iceberg uses unique file names and never
+   * re-writes a file that was previously deleted
+   */
+  override def toleratesAsyncDelete: Boolean = true
 }
