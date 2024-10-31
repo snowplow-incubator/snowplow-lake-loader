@@ -29,4 +29,11 @@ trait Writer {
 
   /** Write Snowplow events into the table */
   def write[F[_]: Sync](df: DataFrame): F[Unit]
+
+  /**
+   * Whether this lake format tolerates deletes to happen asynchronously instead of immediately
+   *
+   * If tolerated, then we use our customized `LakeLoaderFileSystem`.
+   */
+  def toleratesAsyncDelete: Boolean
 }
