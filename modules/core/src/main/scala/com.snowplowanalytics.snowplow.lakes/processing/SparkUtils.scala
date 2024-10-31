@@ -51,10 +51,12 @@ private[processing] object SparkUtils {
     Resource
       .make(openLogF >> buildF)(s => closeLogF >> Sync[F].blocking(s.close()))
       .evalTap { session =>
-        Sync[F].delay {
-          // Forces Spark to use `LakeLoaderFileSystem` when writing to the Lake via Hadoop
-          LakeLoaderFileSystem.overrideHadoopFileSystemConf(targetLocation, session.sparkContext.hadoopConfiguration)
-        }
+        if (writer.toleratesAsyncDelete) {
+          Sync[F].delay {
+            // Forces Spark to use `LakeLoaderFileSystem` when writing to the Lake via Hadoop
+            LakeLoaderFileSystem.overrideHadoopFileSystemConf(targetLocation, session.sparkContext.hadoopConfiguration)
+          }
+        } else Sync[F].unit
       }
   }
 
