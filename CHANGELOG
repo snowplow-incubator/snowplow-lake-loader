@@ -1,3 +1,28 @@
+Version 0.5.0 (2024-11-01)
+--------------------------
+Disable asynchronous deletes for Hudi (#94)
+Upgrade dependencies (#92)
+DynamoDB runtime dependencies for Delta S3 multi-writer
+PDP-1323 Handle initialization errors for GCP
+PDP-1324 - Handle initialization errors for lake loader Delta Azure
+Upgrade common-streams to 0.8.0-M5 (#83)
+Delete files asynchronously (#82)
+Upgrade common-streams 0.8.0-M4 (#81)
+Avoid error on duplicate view name (#80)
+Add option to exit on missing Iglu schemas (#79)
+common-streams 0.8.x with refactored health monitoring (#78)
+Create table concurrently with subscribing to stream of events (#77)
+Iceberg fail fast if missing permissions on the catalog (#76)
+Make alert messages more human-readable (#75)
+Hudi loader should fail early if missing permissions on Glue catalog (#72)
+Add alert & retry for delta/s3 initialization (#74)
+Implement alerting and retrying mechanisms
+Bump aws-hudi to 1.0.0-beta2 (#71)
+Bump hudi to 0.15.0 (#70)
+Allow disregarding Iglu field's nullability when creating output columns (#66)
+Extend health probe to report unhealthy on more error scenarios (#69)
+Fix bad rows resizing (#68)
+
 Version 0.4.1 (2024-06-04)
 --------------------------
 Fix missing s3 dependency for Delta
