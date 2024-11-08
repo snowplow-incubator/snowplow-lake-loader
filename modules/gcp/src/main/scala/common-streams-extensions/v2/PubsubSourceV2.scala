@@ -91,6 +91,10 @@ object PubsubSourceV2 {
         val ackIds = records.map(_.getAckId)
         Sync[F].uncancelable { _ =>
           for {
+            _ <- if (config.logMessageIds.value) Sync[F].delay {
+                   println(records.map(_.getMessage.getMessageId).mkString("Pubsub message IDs: ", ",", ""))
+                 }
+                 else Sync[F].unit
             timeReceived <- Sync[F].realTimeInstant
             _ <- Utils.modAck[F](config.subscription, stub, ackIds, config.durationPerAckExtension)
             token <- Unique[F].unique

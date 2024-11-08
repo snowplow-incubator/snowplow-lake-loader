@@ -25,12 +25,23 @@ case class PubsubSourceConfigV2(
   gcpUserAgent: GcpUserAgent,
   maxMessagesPerPull: Int,
   debounceRequests: FiniteDuration,
-  prefetch: Int
+  prefetch: Int,
+  logMessageIds: PubsubSourceConfigV2.CustomBoolean
 )
 
 object PubsubSourceConfigV2 {
 
   case class Subscription(projectId: String, subscriptionId: String)
+
+  case class CustomBoolean(value: Boolean) extends AnyVal
+
+  object CustomBoolean {
+    implicit def decoder: Decoder[CustomBoolean] =
+      Decoder.decodeBoolean
+        .or(Decoder.decodeString.emapTry(s => scala.util.Try(s.toBoolean)))
+        .map(CustomBoolean(_))
+
+  }
 
   object Subscription {
     implicit def show: Show[Subscription] = Show[Subscription] { s =>
