@@ -14,12 +14,16 @@ import cats.implicits._
 
 import com.google.api.client.googleapis.json.GoogleJsonResponseException
 
-import com.snowplowanalytics.snowplow.sources.pubsub.{PubsubSource, PubsubSourceConfig}
+import com.snowplowanalytics.snowplow.sources.pubsub.{PubsubSource, PubsubSourceAlternative}
+import com.snowplowanalytics.snowplow.sources.pubsub.v2.PubsubSourceV2
 import com.snowplowanalytics.snowplow.sinks.pubsub.{PubsubSink, PubsubSinkConfig}
 
-object GcpApp extends LoaderApp[PubsubSourceConfig, PubsubSinkConfig](BuildInfo) {
+object GcpApp extends LoaderApp[PubsubSourceAlternative, PubsubSinkConfig](BuildInfo) {
 
-  override def source: SourceProvider = PubsubSource.build(_)
+  override def source: SourceProvider = {
+    case PubsubSourceAlternative.V1(c) => PubsubSource.build(c)
+    case PubsubSourceAlternative.V2(c) => PubsubSourceV2.build(c)
+  }
 
   override def badSink: SinkProvider = PubsubSink.resource(_)
 
