@@ -67,7 +67,10 @@ object BuildSettings {
 
   lazy val awsSettings = appSettings ++ Seq(
     name := "lake-loader-aws",
-    buildInfoKeys += BuildInfoKey("cloud" -> "AWS")
+    buildInfoKeys += BuildInfoKey("cloud" -> "AWS"),
+
+    // TODO: Remove this after Hadoop 3.5.0 is released with full support for V2 SDK
+    dockerEnvVars += ("AWS_JAVA_V1_DISABLE_DEPRECATION_ANNOUNCEMENT" -> "true")
   )
 
   lazy val azureSettings = appSettings ++ Seq(
