@@ -81,11 +81,6 @@ object Processing {
     earliestCollectorTstamp: Option[Instant]
   )
 
-  private case class Transformed(
-    events: List[Row],
-    schema: StructType
-  )
-
   private def eventProcessor[F[_]: Async: RegistryLookup](
     env: Environment[F],
     deferredTableExists: F[Unit]
@@ -126,13 +121,12 @@ object Processing {
       .through(handleParseFailures(env, badProcessor))
       .through(BatchUp.noTimeout(env.inMemBatchBytes))
       .through(transformBatch(env, badProcessor, ref))
-      .through(sinkTransformedBatch(env, ref))
 
   private def transformBatch[F[_]: RegistryLookup: Async](
     env: Environment[F],
     badProcessor: BadRowProcessor,
     ref: Ref[F, WindowState]
-  ): Pipe[F, Batched, Transformed] =
+  ): Pipe[F, Batched, Nothing] =
     _.parEvalMapUnordered(env.cpuParallelism) { case Batched(events, entities, _, earliestCollectorTstamp) =>
       for {
         _ <- Logger[F].debug(s"Processing batch of size ${events.size}")
@@ -141,30 +135,29 @@ object Processing {
         _ <- rememberColumnNames(ref, nonAtomicFields.fields)
         (bad, rows) <- transformToSpark[F](badProcessor, events, nonAtomicFields)
         _ <- sendFailedEvents(env, badProcessor, bad)
-        _ <- ref.update { s =>
-               val updatedCollectorTstamp = chooseEarliestTstamp(earliestCollectorTstamp, s.earliestCollectorTstamp)
-               s.copy(numEvents = s.numEvents + rows.size, earliestCollectorTstamp = updatedCollectorTstamp)
-             }
-      } yield Transformed(rows, SparkSchema.forBatch(nonAtomicFields.fields, env.respectIgluNullability))
-    }
+        windowState <- ref.updateAndGet { s =>
+                         val updatedCollectorTstamp = chooseEarliestTstamp(earliestCollectorTstamp, s.earliestCollectorTstamp)
+                         s.copy(numEvents = s.numEvents + rows.size, earliestCollectorTstamp = updatedCollectorTstamp)
+                       }
+        _ <- sinkTransformedBatch(env, windowState, rows, SparkSchema.forBatch(nonAtomicFields.fields, env.respectIgluNullability))
+      } yield ()
+    }.drain
 
   private def sinkTransformedBatch[F[_]: Sync](
     env: Environment[F],
-    ref: Ref[F, WindowState]
-  ): Pipe[F, Transformed, Nothing] =
-    _.evalMap { case Transformed(rows, schema) =>
-      NonEmptyList.fromList(rows) match {
-        case Some(nel) =>
-          for {
-            windowState <- ref.get
-            _ <- env.lakeWriter.localAppendRows(windowState.viewName, nel, schema)
-            _ <- Logger[F].debug(s"Finished processing batch of size ${rows.size}")
-          } yield ()
-        case None =>
-          Logger[F].debug(s"An in-memory batch yielded zero good events.  Nothing will be saved to local disk.")
-      }
-
-    }.drain
+    windowState: WindowState,
+    rows: List[Row],
+    schema: StructType
+  ): F[Unit] =
+    NonEmptyList.fromList(rows) match {
+      case Some(nel) =>
+        for {
+          _ <- env.lakeWriter.localAppendRows(windowState.viewName, nel, schema)
+          _ <- Logger[F].debug(s"Finished processing batch of size ${rows.size}")
+        } yield ()
+      case None =>
+        Logger[F].debug(s"An in-memory batch yielded zero good events.  Nothing will be saved to local disk.")
+    }
 
   private def rememberTokens[F[_]: Functor](ref: Ref[F, WindowState]): Pipe[F, TokenedEvents, Chunk[ByteBuffer]] =
     _.evalMap { case TokenedEvents(events, token) =>

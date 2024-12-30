@@ -116,6 +116,12 @@
 #     "icebergTableProperties": {
 #       "write.metadata.metrics.column.event_id": "count"
 #     }
+#
+#     # -- Any valid Iceberg write option
+#     # -- This can be blank in most setups because the loader already sets sensible defaults.
+#     "icebergWriteOptions": {
+#       "write-format": "parquet"
+#     }
 #   }
 
     "bad": {
@@ -160,11 +166,6 @@
       # -- E.g. to enable the spark ui for debugging:
       "spark.ui.enabled": true
     }
-
-    # -- Controls how many spark tasks run in parallel during writing the events to cloud storage.
-    # -- E.g. If there are 8 available processors, and cpuParallelismFraction = 0.5, then we have 4 spark tasks for writing.
-    # -- The default value is known to work well. Changing this setting might affect memory usage, file sizes, and/or latency.
-    "writerParallelismFraction": 0.5
   }
 
   # Retry configuration for lake operation failures
