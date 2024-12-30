@@ -116,6 +116,12 @@
 #     "icebergTableProperties": {
 #       "write.metadata.metrics.column.event_id": "count"
 #     }
+#
+#     # -- Any valid Iceberg write option
+#     # -- This can be blank in most setups because the loader already sets sensible defaults.
+#     "icebergWriteOptions": {
+#       "write-format": "parquet"
+#     }
 #   }
 
     "bad": {

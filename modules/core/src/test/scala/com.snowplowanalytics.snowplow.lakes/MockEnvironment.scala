@@ -43,10 +43,10 @@ object MockEnvironment {
     case object CreatedTable extends Action
     case class Checkpointed(tokens: List[Unique.Token]) extends Action
     case class SentToBad(count: Int) extends Action
-    case class InitializedLocalDataFrame(viewName: String) extends Action
+    case class InitializedLocalDataFrame(viewName: String, numEvents: Int) extends Action
     case class AppendedRowsToDataFrame(viewName: String, numEvents: Int) extends Action
     case class RemovedDataFrameFromDisk(viewName: String) extends Action
-    case class CommittedToTheLake(viewName: String) extends Action
+    case class CommittedToTheLake(viewNames: List[String]) extends Action
 
     /* Metrics */
     case class AddedReceivedCountMetric(count: Int) extends Action
@@ -99,12 +99,16 @@ object MockEnvironment {
     def createTable: IO[Unit] =
       IO.sleep(TimeTakenToCreateTable) *> state.update(_ :+ CreatedTable)
 
-    def initializeLocalDataFrame(viewName: String): IO[Unit] =
-      state.update(_ :+ InitializedLocalDataFrame(viewName))
+    def initializeLocalDataFrame(
+      viewName: String,
+      rows: List[Row],
+      schema: StructType
+    ): IO[Unit] =
+      state.update(_ :+ InitializedLocalDataFrame(viewName, rows.size))
 
     def localAppendRows(
       viewName: String,
-      rows: NonEmptyList[Row],
+      rows: List[Row],
       schema: StructType
     ): IO[Unit] =
       state.update(_ :+ AppendedRowsToDataFrame(viewName, rows.size))
@@ -112,8 +116,8 @@ object MockEnvironment {
     def removeDataFrameFromDisk(viewName: String): IO[Unit] =
       state.update(_ :+ RemovedDataFrameFromDisk(viewName))
 
-    def commit(viewName: String): IO[Unit] =
-      state.update(_ :+ CommittedToTheLake(viewName))
+    def commit(viewNames: NonEmptyList[String]): IO[Unit] =
+      state.update(_ :+ CommittedToTheLake(viewNames.toList))
   }
 
   private def testSourceAndAck(windows: List[List[TokenedEvents]], state: Ref[IO, Vector[Action]]): SourceAndAck[IO] =

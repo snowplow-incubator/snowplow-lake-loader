@@ -26,12 +26,23 @@ trait LakeWriter[F[_]] {
   def createTable: F[Unit]
 
   /**
-   * Creates an empty DataFrame with the atomic schema. Saves it with spark as a "view" so we can
-   * refer to it by name later.
+   * Creates a DataFrame. Saves it with spark as a "view" so we can refer to it by name later.
    *
-   * Each window of events has its own DataFrame with unique name.
+   * Each window of events has its own DataFrames (one per lake partition) with unique names.
+   *
+   * @param viewName
+   *   Spark view for this window/partition. This view must not already exist before calling this
+   *   function.
+   * @param rows
+   *   The rows to initialize this view
+   * @param schema
+   *   The schema for this batch of rows.
    */
-  def initializeLocalDataFrame(viewName: String): F[Unit]
+  def initializeLocalDataFrame(
+    viewName: String,
+    rows: List[Row],
+    schema: StructType
+  ): F[Unit]
 
   /**
    * Append rows to the local DataFrame we are accumulating for this window
@@ -50,7 +61,7 @@ trait LakeWriter[F[_]] {
    */
   def localAppendRows(
     viewName: String,
-    rows: NonEmptyList[Row],
+    rows: List[Row],
     schema: StructType
   ): F[Unit]
 
@@ -62,8 +73,8 @@ trait LakeWriter[F[_]] {
    */
   def removeDataFrameFromDisk(viewName: String): F[Unit]
 
-  /** Commit the DataFrame by writing it into the lake */
-  def commit(viewName: String): F[Unit]
+  /** Commit the DataFrames by writing into the lake */
+  def commit(viewNames: NonEmptyList[String]): F[Unit]
 }
 
 object LakeWriter {
@@ -105,12 +116,16 @@ object LakeWriter {
         underlying.createTable
       } <* appHealth.beHealthyForSetup
 
-    def initializeLocalDataFrame(viewName: String): F[Unit] =
-      underlying.initializeLocalDataFrame(viewName)
+    def initializeLocalDataFrame(
+      viewName: String,
+      rows: List[Row],
+      schema: StructType
+    ): F[Unit] =
+      underlying.initializeLocalDataFrame(viewName, rows, schema)
 
     def localAppendRows(
       viewName: String,
-      rows: NonEmptyList[Row],
+      rows: List[Row],
       schema: StructType
     ): F[Unit] =
       underlying.localAppendRows(viewName, rows, schema)
@@ -118,9 +133,9 @@ object LakeWriter {
     def removeDataFrameFromDisk(viewName: String): F[Unit] =
       underlying.removeDataFrameFromDisk(viewName)
 
-    def commit(viewName: String): F[Unit] =
+    def commit(viewNames: NonEmptyList[String]): F[Unit] =
       underlying
-        .commit(viewName)
+        .commit(viewNames)
         .onError { case _ =>
           appHealth.beUnhealthyForRuntimeService(RuntimeService.SparkWriter)
         } <* appHealth.beHealthyForRuntimeService(RuntimeService.SparkWriter)
@@ -149,12 +164,16 @@ object LakeWriter {
     def createTable: F[Unit] =
       w.prepareTable(spark)
 
-    def initializeLocalDataFrame(viewName: String): F[Unit] =
-      SparkUtils.initializeLocalDataFrame(spark, viewName)
+    def initializeLocalDataFrame(
+      viewName: String,
+      rows: List[Row],
+      schema: StructType
+    ): F[Unit] =
+      SparkUtils.initializeLocalDataFrame(spark, viewName, rows, schema)
 
     def localAppendRows(
       viewName: String,
-      rows: NonEmptyList[Row],
+      rows: List[Row],
       schema: StructType
     ): F[Unit] =
       SparkUtils.localAppendRows(spark, viewName, rows, schema)
@@ -162,10 +181,11 @@ object LakeWriter {
     def removeDataFrameFromDisk(viewName: String) =
       SparkUtils.dropView(spark, viewName)
 
-    def commit(viewName: String): F[Unit] =
+    def commit(viewNames: NonEmptyList[String]): F[Unit] =
       for {
+        now <- Sync[F].realTimeInstant
         df <- mutexForUnioning.lock.surround {
-                SparkUtils.prepareFinalDataFrame(spark, viewName, writerParallelism)
+                SparkUtils.prepareFinalDataFrame(spark, viewNames, writerParallelism, now)
               }
         _ <- mutexForWriting.lock
                .surround {

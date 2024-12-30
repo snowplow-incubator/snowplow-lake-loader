@@ -180,7 +180,7 @@ class LakeWriterSpec extends Specification with CatsEffect {
   def e6 =
     control().flatMap { c =>
       val expected = Vector(
-        Action.CommitAttempted("testview"),
+        Action.CommitAttempted(List("testview")),
         Action.BecameHealthy(RuntimeService.SparkWriter)
       )
 
@@ -192,7 +192,7 @@ class LakeWriterSpec extends Specification with CatsEffect {
       )
 
       for {
-        _ <- wrappedLakeWriter.commit("testview")
+        _ <- wrappedLakeWriter.commit(NonEmptyList.of("testview"))
         state <- c.state.get
       } yield state should beEqualTo(expected)
     }
@@ -202,9 +202,9 @@ class LakeWriterSpec extends Specification with CatsEffect {
 
     control(mocks).flatMap { c =>
       val expected = Vector(
-        Action.CommitAttempted("testview1"),
+        Action.CommitAttempted(List("testview1")),
         Action.BecameHealthy(RuntimeService.SparkWriter),
-        Action.CommitAttempted("testview2"),
+        Action.CommitAttempted(List("testview2")),
         Action.BecameUnhealthy(RuntimeService.SparkWriter)
       )
 
@@ -216,8 +216,8 @@ class LakeWriterSpec extends Specification with CatsEffect {
       )
 
       for {
-        _ <- wrappedLakeWriter.commit("testview1")
-        _ <- wrappedLakeWriter.commit("testview2").voidError
+        _ <- wrappedLakeWriter.commit(NonEmptyList.of("testview1"))
+        _ <- wrappedLakeWriter.commit(NonEmptyList.of("testview2")).voidError
         state <- c.state.get
       } yield state should beEqualTo(expected)
     }
@@ -230,7 +230,7 @@ object LakeWriterSpec {
 
   object Action {
     case object CreateTableAttempted extends Action
-    case class CommitAttempted(viewName: String) extends Action
+    case class CommitAttempted(viewNames: List[String]) extends Action
     case class SentAlert(timeSentSeconds: Long) extends Action
     case class BecameUnhealthy(service: RuntimeService) extends Action
     case class BecameHealthy(service: RuntimeService) extends Action
@@ -301,23 +301,27 @@ object LakeWriterSpec {
                     }
         } yield result
 
-      def initializeLocalDataFrame(viewName: String): IO[Unit] = IO.unit
+      def initializeLocalDataFrame(
+        viewName: String,
+        rows: List[Row],
+        schema: StructType
+      ): IO[Unit] = IO.unit
 
       def localAppendRows(
         viewName: String,
-        rows: NonEmptyList[Row],
+        rows: List[Row],
         schema: StructType
       ): IO[Unit] = IO.unit
 
       def removeDataFrameFromDisk(viewName: String): IO[Unit] = IO.unit
 
-      def commit(viewName: String): IO[Unit] =
+      def commit(viewNames: NonEmptyList[String]): IO[Unit] =
         for {
           response <- mocksRef.modify {
                         case head :: tail => (tail, head)
                         case Nil          => (Nil, Response.Success)
                       }
-          _ <- state.update(_ :+ Action.CommitAttempted(viewName))
+          _ <- state.update(_ :+ Action.CommitAttempted(viewNames.toList))
           result <- response match {
                       case Response.Success =>
                         IO.unit

@@ -18,7 +18,7 @@ import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 
 import org.apache.spark.sql.{DataFrame, Row, SparkSession}
-import org.apache.spark.sql.functions.current_timestamp
+import org.apache.spark.sql.functions.lit
 import org.apache.spark.sql.types.StructType
 
 import com.snowplowanalytics.snowplow.lakes.Config
@@ -27,6 +27,7 @@ import com.snowplowanalytics.snowplow.lakes.fs.LakeLoaderFileSystem
 
 import scala.jdk.CollectionConverters._
 import java.net.URI
+import java.time.Instant
 
 private[processing] object SparkUtils {
 
@@ -66,25 +67,34 @@ private[processing] object SparkUtils {
     writer.sparkConfig ++ config.conf + (gcpUserAgentKey -> gcpUserAgentValue)
   }
 
-  def initializeLocalDataFrame[F[_]: Sync](spark: SparkSession, viewName: String): F[Unit] =
+  def initializeLocalDataFrame[F[_]: Sync](
+    spark: SparkSession,
+    viewName: String,
+    rows: List[Row],
+    schema: StructType
+  ): F[Unit] =
     for {
-      _ <- Logger[F].debug(s"Initializing local DataFrame with name $viewName")
+      _ <- Logger[F].debug(s"Initializing local DataFrame with name $viewName and ${rows.size} events")
       _ <- Sync[F].blocking {
-             spark.emptyDataFrame.createTempView(viewName)
+             spark
+               .createDataFrame(rows.toList.asJava, schema)
+               .coalesce(1)
+               .localCheckpoint()
+               .createTempView(viewName)
            }
     } yield ()
 
   def localAppendRows[F[_]: Sync](
     spark: SparkSession,
     viewName: String,
-    rows: NonEmptyList[Row],
+    rows: List[Row],
     schema: StructType
   ): F[Unit] =
     for {
       _ <- Logger[F].debug(s"Saving batch of ${rows.size} events to local DataFrame $viewName")
       _ <- Sync[F].blocking {
              spark
-               .createDataFrame(rows.toList.asJava, schema)
+               .createDataFrame(rows.asJava, schema)
                .coalesce(1)
                .localCheckpoint()
                .unionByName(spark.table(viewName), allowMissingColumns = true)
@@ -94,19 +104,25 @@ private[processing] object SparkUtils {
 
   def prepareFinalDataFrame[F[_]: Sync](
     spark: SparkSession,
-    viewName: String,
-    writerParallelism: Int
+    viewNames: NonEmptyList[String],
+    writerParallelism: Int,
+    loadTstamp: Instant
   ): F[DataFrame] =
     Sync[F].blocking {
-      spark
-        .table(viewName)
-        .withColumn("load_tstamp", current_timestamp())
+      viewNames
+        .map { viewName =>
+          spark
+            .table(viewName)
+            .withColumn("load_tstamp", lit(loadTstamp))
+            .coalesce(1)
+        }
+        .reduceLeft(_.unionByName(_, allowMissingColumns = true))
         .coalesce(writerParallelism)
         .localCheckpoint()
     }
 
   def dropView[F[_]: Sync](spark: SparkSession, viewName: String): F[Unit] =
-    Logger[F].info(s"Removing Spark data frame $viewName from local disk...") >>
+    Logger[F].debug(s"Removing Spark data frame $viewName from local disk...") >>
       Sync[F].blocking {
         spark.catalog.dropTempView(viewName)
       }.void
