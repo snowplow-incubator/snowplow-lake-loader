@@ -25,6 +25,7 @@ trait Metrics[F[_]] {
   def addCommitted(count: Int): F[Unit]
   def setLatency(latency: FiniteDuration): F[Unit]
   def setProcessingLatency(latency: FiniteDuration): F[Unit]
+  def setE2ELatency(latency: FiniteDuration): F[Unit]
 
   def report: Stream[F, Nothing]
 }
@@ -39,7 +40,8 @@ object Metrics {
     bad: Int,
     committed: Int,
     latency: FiniteDuration,
-    processingLatency: Option[FiniteDuration]
+    processingLatency: Option[FiniteDuration],
+    e2eLatency: Option[FiniteDuration]
   ) extends CommonMetrics.State {
     def toKVMetrics: List[CommonMetrics.KVMetric] =
       List(
@@ -47,11 +49,11 @@ object Metrics {
         KVMetric.CountBad(bad),
         KVMetric.CountCommitted(committed),
         KVMetric.Latency(latency)
-      ) ++ processingLatency.map(KVMetric.ProcessingLatency(_))
+      ) ++ processingLatency.map(KVMetric.ProcessingLatency(_)) ++ e2eLatency.map(KVMetric.E2ELatency(_))
   }
 
   private object State {
-    def empty: State = State(0, 0, 0, Duration.Zero, None)
+    def empty: State = State(0, 0, 0, Duration.Zero, None, None)
   }
 
   private def impl[F[_]: Async](config: Config.Metrics, ref: Ref[F, State]): Metrics[F] =
@@ -68,6 +70,11 @@ object Metrics {
         ref.update { state =>
           val newLatency = state.processingLatency.fold(latency)(_.max(latency))
           state.copy(processingLatency = Some(newLatency))
+        }
+      def setE2ELatency(latency: FiniteDuration): F[Unit] =
+        ref.update { state =>
+          val newLatency = state.e2eLatency.fold(latency)(_.max(latency))
+          state.copy(e2eLatency = Some(newLatency))
         }
     }
 
@@ -99,6 +106,12 @@ object Metrics {
 
     final case class ProcessingLatency(d: FiniteDuration) extends CommonMetrics.KVMetric {
       val key        = "processing_latency_millis"
+      val value      = d.toMillis.toString
+      val metricType = CommonMetrics.MetricType.Gauge
+    }
+
+    final case class E2ELatency(d: FiniteDuration) extends CommonMetrics.KVMetric {
+      val key        = "e2e_latency_millis"
       val value      = d.toMillis.toString
       val metricType = CommonMetrics.MetricType.Gauge
     }

@@ -24,6 +24,7 @@ import org.apache.spark.sql.types.StructType
 
 import java.nio.charset.StandardCharsets
 import java.nio.ByteBuffer
+import java.time.Instant
 import scala.concurrent.duration.DurationLong
 
 import com.snowplowanalytics.iglu.client.resolver.registries.{Http4sRegistryLookup, RegistryLookup}
@@ -69,13 +70,15 @@ object Processing {
   private case class ParseResult(
     events: List[Event],
     bad: List[BadRow],
-    originalBytes: Long
+    originalBytes: Long,
+    earliestCollectorTstamp: Option[Instant]
   )
 
   private case class Batched(
     events: ListOfList[Event],
     entities: Map[TabledEntity, Set[SchemaSubVersion]],
-    originalBytes: Long
+    originalBytes: Long,
+    earliestCollectorTstamp: Option[Instant]
   )
 
   private case class Transformed(
@@ -131,7 +134,7 @@ object Processing {
     badProcessor: BadRowProcessor,
     ref: Ref[F, WindowState]
   ): Pipe[F, Batched, Transformed] =
-    _.parEvalMapUnordered(env.cpuParallelism) { case Batched(events, entities, _) =>
+    _.parEvalMapUnordered(env.cpuParallelism) { case Batched(events, entities, _, earliestCollectorTstamp) =>
       for {
         _ <- Logger[F].debug(s"Processing batch of size ${events.size}")
         nonAtomicFields <- NonAtomicFields.resolveTypes[F](env.resolver, entities, env.schemasToSkip)
@@ -139,7 +142,10 @@ object Processing {
         _ <- rememberColumnNames(ref, nonAtomicFields.fields)
         (bad, rows) <- transformToSpark[F](badProcessor, events, nonAtomicFields)
         _ <- sendFailedEvents(env, badProcessor, bad)
-        _ <- ref.update(s => s.copy(numEvents = s.numEvents + rows.size))
+        _ <- ref.update { s =>
+               val updatedCollectorTstamp = chooseEarliestTstamp(earliestCollectorTstamp, s.earliestCollectorTstamp)
+               s.copy(numEvents = s.numEvents + rows.size, earliestCollectorTstamp = updatedCollectorTstamp)
+             }
       } yield Transformed(rows, SparkSchema.forBatch(nonAtomicFields.fields, env.respectIgluNullability))
     }
 
@@ -207,17 +213,23 @@ object Processing {
                                  }
                                }
                              }
-      } yield ParseResult(events, badRows, numBytes)
+        earliestCollectorTstamp = events.view.map(_.collector_tstamp).minOption
+      } yield ParseResult(events, badRows, numBytes, earliestCollectorTstamp)
     }
 
   private implicit def batchable: BatchUp.Batchable[ParseResult, Batched] = new BatchUp.Batchable[ParseResult, Batched] {
     def combine(b: Batched, a: ParseResult): Batched = {
       val entities = Foldable[List].foldMap(a.events)(TabledEntity.forEvent(_))
-      Batched(b.events.prepend(a.events), entities |+| b.entities, a.originalBytes + b.originalBytes)
+      Batched(
+        b.events.prepend(a.events),
+        entities |+| b.entities,
+        a.originalBytes + b.originalBytes,
+        chooseEarliestTstamp(a.earliestCollectorTstamp, b.earliestCollectorTstamp)
+      )
     }
     def single(a: ParseResult): Batched = {
       val entities = Foldable[List].foldMap(a.events)(TabledEntity.forEvent(_))
-      Batched(ListOfList.of(List(a.events)), entities, a.originalBytes)
+      Batched(ListOfList.of(List(a.events)), entities, a.originalBytes, a.earliestCollectorTstamp)
     }
     def weightOf(a: ParseResult): Long = a.originalBytes
   }
@@ -273,6 +285,12 @@ object Processing {
           _ <- Logger[F].info(s"Window ${state.viewName} finished writing and committing ${state.numEvents} events to the lake.")
           _ <- env.metrics.addCommitted(state.numEvents)
           _ <- env.metrics.setProcessingLatency(now - state.startTime.toEpochMilli.millis)
+          _ <- state.earliestCollectorTstamp match {
+                 case Some(earliestCollectorTstamp) =>
+                   env.metrics.setE2ELatency(now - earliestCollectorTstamp.toEpochMilli.millis)
+                 case None =>
+                   Sync[F].unit
+               }
         } yield ()
       } else
         Logger[F].info(s"Window ${state.viewName} yielded zero good events.  Nothing will be written into the lake.")
@@ -289,4 +307,13 @@ object Processing {
         new RuntimeException(msg)
       )
     } else Applicative[F].unit
+
+  private def chooseEarliestTstamp(o1: Option[Instant], o2: Option[Instant]): Option[Instant] =
+    (o1, o2)
+      .mapN { case (t1, t2) =>
+        if (t1.isBefore(t2)) t1 else t2
+      }
+      .orElse(o1)
+      .orElse(o2)
+
 }
