@@ -32,12 +32,15 @@ import java.time.{Instant, ZoneOffset}
  *   Names of the columns which will be written out by the loader
  * @param numEvents
  *   The number of events in this window
+ * @param earliestCollectorTstamp
+ *   The earliest collector_tstamp of all events seen in the window
  */
 private[processing] case class WindowState(
   tokens: List[Unique.Token],
   startTime: Instant,
   nonAtomicColumnNames: Set[String],
-  numEvents: Int
+  numEvents: Int,
+  earliestCollectorTstamp: Option[Instant]
 ) {
 
   /** The name by which the current DataFrame is known to the Spark catalog */
@@ -54,6 +57,6 @@ private[processing] object WindowState {
 
   def build[F[_]: Sync]: F[WindowState] =
     Sync[F].realTimeInstant.map { now =>
-      WindowState(Nil, now, Set.empty, 0)
+      WindowState(Nil, now, Set.empty, 0, None)
     }
 }
