@@ -74,7 +74,8 @@ object Config {
     table: String,
     catalog: IcebergCatalog,
     location: URI,
-    icebergTableProperties: Map[String, String]
+    icebergTableProperties: Map[String, String],
+    icebergWriteOptions: Map[String, String]
   ) extends Target
 
   sealed trait IcebergCatalog
@@ -100,8 +101,7 @@ object Config {
   case class Spark(
     taskRetries: Int,
     conf: Map[String, String],
-    gcpUserAgent: GcpUserAgent,
-    writerParallelismFraction: BigDecimal
+    gcpUserAgent: GcpUserAgent
   )
 
   case class Metrics(

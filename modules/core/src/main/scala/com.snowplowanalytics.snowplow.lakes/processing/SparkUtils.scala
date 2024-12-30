@@ -70,7 +70,11 @@ private[processing] object SparkUtils {
     for {
       _ <- Logger[F].debug(s"Initializing local DataFrame with name $viewName")
       _ <- Sync[F].blocking {
-             spark.emptyDataFrame.createTempView(viewName)
+             try {
+               spark.sparkContext.setLocalProperty("spark.scheduler.pool", "pool1")
+               spark.emptyDataFrame.createTempView(viewName)
+             } finally
+               spark.sparkContext.setLocalProperty("spark.scheduler.pool", null)
            }
     } yield ()
 
@@ -83,31 +87,37 @@ private[processing] object SparkUtils {
     for {
       _ <- Logger[F].debug(s"Saving batch of ${rows.size} events to local DataFrame $viewName")
       _ <- Sync[F].blocking {
-             spark
-               .createDataFrame(rows.toList.asJava, schema)
-               .coalesce(1)
-               .localCheckpoint()
-               .unionByName(spark.table(viewName), allowMissingColumns = true)
-               .createOrReplaceTempView(viewName)
+             try {
+               spark.sparkContext.setLocalProperty("spark.scheduler.pool", "pool1")
+               spark
+                 .createDataFrame(rows.toList.asJava, schema)
+                 .coalesce(1)
+                 .localCheckpoint()
+                 .unionByName(spark.table(viewName), allowMissingColumns = true)
+                 .createOrReplaceTempView(viewName)
+             } finally
+               spark.sparkContext.setLocalProperty("spark.scheduler.pool", null)
            }
     } yield ()
 
   def prepareFinalDataFrame[F[_]: Sync](
     spark: SparkSession,
-    viewName: String,
-    writerParallelism: Int
+    viewName: String
   ): F[DataFrame] =
-    Sync[F].blocking {
+    Sync[F].delay {
       spark
         .table(viewName)
+        .sort("event_name")
         .withColumn("load_tstamp", current_timestamp())
-        .coalesce(writerParallelism)
-        .localCheckpoint()
     }
 
   def dropView[F[_]: Sync](spark: SparkSession, viewName: String): F[Unit] =
     Logger[F].info(s"Removing Spark data frame $viewName from local disk...") >>
       Sync[F].blocking {
-        spark.catalog.dropTempView(viewName)
+        try {
+          spark.sparkContext.setLocalProperty("spark.scheduler.pool", "pool1")
+          spark.catalog.dropTempView(viewName)
+        } finally
+          spark.sparkContext.setLocalProperty("spark.scheduler.pool", null)
       }.void
 }
