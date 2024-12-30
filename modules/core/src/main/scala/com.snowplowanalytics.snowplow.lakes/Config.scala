@@ -74,7 +74,8 @@ object Config {
     table: String,
     catalog: IcebergCatalog,
     location: URI,
-    icebergTableProperties: Map[String, String]
+    icebergTableProperties: Map[String, String],
+    icebergWriteOptions: Map[String, String]
   ) extends Target
 
   sealed trait IcebergCatalog
