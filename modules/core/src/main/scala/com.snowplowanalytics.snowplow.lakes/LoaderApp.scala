@@ -36,6 +36,13 @@ abstract class LoaderApp[SourceConfig: Decoder, SinkConfig: Decoder](
   override def onCpuStarvationWarn(metrics: CpuStarvationWarningMetrics): IO[Unit] =
     Logger[IO].debug(s"Cats Effect measured responsiveness in excess of ${metrics.starvationInterval * metrics.starvationThreshold}")
 
+  /**
+   * Decreases the cats-effect thread count from the default, because Lake Loader does a lot of
+   * cpu-intensive processing on the spark threads.
+   */
+  override def computeWorkerThreadCount: Int =
+    Math.max(2, Runtime.getRuntime.availableProcessors / 2)
+
   type SinkProvider   = SinkConfig => Resource[IO, Sink[IO]]
   type SourceProvider = SourceConfig => IO[SourceAndAck[IO]]
 

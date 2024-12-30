@@ -81,7 +81,7 @@ object LakeWriter {
     }
     for {
       session <- SparkUtils.session[F](config, w, target.location)
-      writerParallelism = chooseWriterParallelism(config)
+      writerParallelism = chooseWriterParallelism()
       mutex1 <- Resource.eval(Mutex[F])
       mutex2 <- Resource.eval(Mutex[F])
     } yield impl(session, w, writerParallelism, mutex1, mutex2)
@@ -175,14 +175,12 @@ object LakeWriter {
   }
 
   /**
-   * Converts `writerParallelismFraction` into a suggested number of threads
+   * Allow spark to parallelize over _most_ of the available processors for writing to the lake,
+   * because this speeds up how quickly we can sink a batch.
    *
-   * For bigger instances (more cores) we want more parallelism in the writer. This avoids a
-   * situation where writing tasks exceed the length of a window, which causes an unbalanced use of
-   * cpu.
+   * But leave 1 processor always available, so that we are never blocked when trying to save one of
+   * the intermediate dataframes.
    */
-  private def chooseWriterParallelism(config: Config.Spark): Int =
-    (Runtime.getRuntime.availableProcessors * config.writerParallelismFraction)
-      .setScale(0, BigDecimal.RoundingMode.UP)
-      .toInt
+  private def chooseWriterParallelism(): Int =
+    (Runtime.getRuntime.availableProcessors - 1).max(1)
 }
