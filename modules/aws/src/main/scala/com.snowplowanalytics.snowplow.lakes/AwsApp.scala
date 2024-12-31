@@ -18,6 +18,7 @@ import software.amazon.awssdk.services.glue.model.{
   AccessDeniedException => GlueAccessDeniedException,
   EntityNotFoundException => GlueEntityNotFoundException
 }
+import com.amazonaws.services.dynamodbv2.model.AmazonDynamoDBException
 
 import java.nio.file.AccessDeniedException
 import scala.util.matching.Regex
@@ -71,6 +72,13 @@ object AwsApp extends LoaderApp[KinesisSourceConfig, KinesisSinkConfig](BuildInf
       stripCauseDetails(e)
     case _: CredentialInitializationException =>
       "Failed to initialize AWS access credentials"
+
+    // Exceptions raised by underlying AWS SDK v1.
+    // Note AWS v1 dependencies will be removed in the next release of Hadoop and Delta
+    case e: AmazonDynamoDBException if e.getErrorCode === "AccessDeniedException" =>
+      s"Missing permissions to operate on the DynamoDB table"
+    case e: AmazonDynamoDBException if e.getErrorCode === "ValidationException" =>
+      s"DynamoDB table does not have the expected structure"
 
     // Exceptions common to the table format - Delta/Iceberg/Hudi
     case TableFormatSetupError.check(t) =>
