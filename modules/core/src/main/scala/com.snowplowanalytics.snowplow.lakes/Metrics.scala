@@ -10,6 +10,7 @@
 
 package com.snowplowanalytics.snowplow.lakes
 
+import cats.Functor
 import cats.effect.Async
 import cats.effect.kernel.Ref
 import cats.implicits._
@@ -17,6 +18,7 @@ import fs2.Stream
 
 import scala.concurrent.duration.{Duration, FiniteDuration}
 
+import com.snowplowanalytics.snowplow.sources.SourceAndAck
 import com.snowplowanalytics.snowplow.runtime.{Metrics => CommonMetrics}
 
 trait Metrics[F[_]] {
@@ -32,8 +34,8 @@ trait Metrics[F[_]] {
 
 object Metrics {
 
-  def build[F[_]: Async](config: Config.Metrics): F[Metrics[F]] =
-    Ref[F].of(State.empty).map(impl(config, _))
+  def build[F[_]: Async](config: Config.Metrics, sourceAndAck: SourceAndAck[F]): F[Metrics[F]] =
+    Ref.ofEffect(State.initialize(sourceAndAck)).map(impl(config, _, sourceAndAck))
 
   private case class State(
     received: Int,
@@ -53,11 +55,18 @@ object Metrics {
   }
 
   private object State {
-    def empty: State = State(0, 0, 0, Duration.Zero, None, None)
+    def initialize[F[_]: Functor](sourceAndAck: SourceAndAck[F]): F[State] =
+      sourceAndAck.currentStreamLatency.map { latency =>
+        State(0, 0, 0, latency.getOrElse(Duration.Zero), None, None)
+      }
   }
 
-  private def impl[F[_]: Async](config: Config.Metrics, ref: Ref[F, State]): Metrics[F] =
-    new CommonMetrics[F, State](ref, State.empty, config.statsd) with Metrics[F] {
+  private def impl[F[_]: Async](
+    config: Config.Metrics,
+    ref: Ref[F, State],
+    sourceAndAck: SourceAndAck[F]
+  ): Metrics[F] =
+    new CommonMetrics[F, State](ref, State.initialize(sourceAndAck), config.statsd) with Metrics[F] {
       def addReceived(count: Int): F[Unit] =
         ref.update(s => s.copy(received = s.received + count))
       def addBad(count: Int): F[Unit] =

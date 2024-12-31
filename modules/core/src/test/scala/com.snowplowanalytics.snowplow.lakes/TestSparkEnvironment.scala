@@ -70,6 +70,9 @@ object TestSparkEnvironment {
 
       def isHealthy(maxAllowedProcessingLatency: FiniteDuration): IO[SourceAndAck.HealthStatus] =
         IO.pure(SourceAndAck.Healthy)
+
+      def currentStreamLatency: IO[Option[FiniteDuration]] =
+        IO.pure(None)
     }
 
   private def testHttpClient: Client[IO] = Client[IO] { _ =>

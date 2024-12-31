@@ -135,6 +135,9 @@ object MockEnvironment {
 
       def isHealthy(maxAllowedProcessingLatency: FiniteDuration): IO[SourceAndAck.HealthStatus] =
         IO.pure(SourceAndAck.Healthy)
+
+      def currentStreamLatency: IO[Option[FiniteDuration]] =
+        IO.pure(None)
     }
 
   private def testSink(ref: Ref[IO, Vector[Action]]): Sink[IO] = Sink[IO] { batch =>
