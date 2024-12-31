@@ -172,9 +172,9 @@ object Dependencies {
     awsS3,
     awsGlue,
     awsSts,
-    awsS3Transfer % Runtime,
+    dynamodbSdk1,
     deltaDynamodb % Runtime,
-    dynamodbSdk1  % Runtime
+    awsS3Transfer % Runtime
   ) ++ commonRuntimeDependencies
 
   val azureDependencies = Seq(
