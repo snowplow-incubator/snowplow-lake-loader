@@ -24,12 +24,18 @@ object GcpApp extends LoaderApp[PubsubSourceConfig, PubsubSinkConfig](BuildInfo)
   override def badSink: SinkProvider = PubsubSink.resource(_)
 
   override def isDestinationSetupError: DestinationSetupErrorCheck = {
-    // Destination bucket doesn't exist
-    case e: GoogleJsonResponseException if e.getDetails.getCode === 404 =>
-      "The specified bucket does not exist"
-    // Permissions missing for Cloud Storage
+    // Bad Request
+    case e: GoogleJsonResponseException if e.getDetails.getCode === 400 =>
+      e.getDetails.getMessage
+    // Unauthorized
+    case e: GoogleJsonResponseException if e.getDetails.getCode === 401 =>
+      e.getDetails.getMessage
+    // Forbidden - Permissions missing for Cloud Storage
     case e: GoogleJsonResponseException if e.getDetails.getCode === 403 =>
       e.getDetails.getMessage
+    // Not Found - Destination bucket doesn't exist
+    case e: GoogleJsonResponseException if e.getDetails.getCode === 404 =>
+      "The specified bucket does not exist"
     // Exceptions common to the table format - Delta/Iceberg/Hudi
     case TableFormatSetupError.check(t) =>
       t
