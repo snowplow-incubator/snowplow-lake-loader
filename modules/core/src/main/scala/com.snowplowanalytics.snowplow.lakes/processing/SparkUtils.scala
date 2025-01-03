@@ -18,7 +18,7 @@ import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 
 import org.apache.spark.sql.{DataFrame, Row, SparkSession}
-import org.apache.spark.sql.functions.current_timestamp
+import org.apache.spark.sql.functions.{col, current_timestamp}
 import org.apache.spark.sql.types.StructType
 
 import com.snowplowanalytics.snowplow.lakes.Config
@@ -101,6 +101,7 @@ private[processing] object SparkUtils {
       spark
         .table(viewName)
         .withColumn("load_tstamp", current_timestamp())
+        .repartition(col("event_name"))
         .coalesce(writerParallelism)
         .localCheckpoint()
     }
