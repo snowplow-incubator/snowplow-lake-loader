@@ -60,6 +60,7 @@ object Dependencies {
     val pubsubSdk = "1.134.1"
     val avro      = "1.11.4"
     val jackson   = "2.17.2"
+    val kafka     = "3.7.2"
 
     // tests
     val specs2           = "4.20.0"
@@ -104,16 +105,17 @@ object Dependencies {
   val awsRegistry   = "software.amazon.glue"   % "schema-registry-serde" % V.awsRegistry
 
   // transitive overrides
-  val protobuf   = "com.google.protobuf"            % "protobuf-java"                      % V.protobuf
-  val snappy     = "org.xerial.snappy"              % "snappy-java"                        % V.snappy
-  val hadoopYarn = "org.apache.hadoop"              % "hadoop-yarn-server-resourcemanager" % V.hadoop
-  val thrift     = "org.apache.thrift"              % "libthrift"                          % V.thrift
-  val netty      = "io.netty"                       % "netty-all"                          % V.netty
-  val awsCore    = "com.amazonaws"                  % "aws-java-sdk-core"                  % V.awsSdk1
-  val pubsubSdk  = "com.google.cloud"               % "google-cloud-pubsub"                % V.pubsubSdk
-  val avro       = "org.apache.avro"                % "avro"                               % V.avro
-  val jacksonDT  = "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310"            % V.jackson
-  val jacksonMS  = "com.fasterxml.jackson.module"  %% "jackson-module-scala"               % V.jackson
+  val protobuf     = "com.google.protobuf"            % "protobuf-java"                      % V.protobuf
+  val snappy       = "org.xerial.snappy"              % "snappy-java"                        % V.snappy
+  val hadoopYarn   = "org.apache.hadoop"              % "hadoop-yarn-server-resourcemanager" % V.hadoop
+  val thrift       = "org.apache.thrift"              % "libthrift"                          % V.thrift
+  val netty        = "io.netty"                       % "netty-all"                          % V.netty
+  val awsCore      = "com.amazonaws"                  % "aws-java-sdk-core"                  % V.awsSdk1
+  val pubsubSdk    = "com.google.cloud"               % "google-cloud-pubsub"                % V.pubsubSdk
+  val avro         = "org.apache.avro"                % "avro"                               % V.avro
+  val jacksonDT    = "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310"            % V.jackson
+  val jacksonMS    = "com.fasterxml.jackson.module"  %% "jackson-module-scala"               % V.jackson
+  val kafkaClients = "org.apache.kafka"               % "kafka-clients"                      % V.kafka
 
   // snowplow
   val streamsCore      = "com.snowplowanalytics" %% "streams-core"             % V.streams
@@ -182,6 +184,7 @@ object Dependencies {
     azureIdentity,
     hadoopAzure,
     hadoopClient,
+    kafkaClients,
     specs2
   ) ++ commonRuntimeDependencies
 
