@@ -33,7 +33,7 @@ import com.snowplowanalytics.snowplow.badrows.{BadRow, Processor => BadRowProces
 import com.snowplowanalytics.snowplow.badrows.Payload.{RawPayload => BadRowRawPayload}
 import com.snowplowanalytics.snowplow.sources.{EventProcessingConfig, EventProcessor, TokenedEvents}
 import com.snowplowanalytics.snowplow.sinks.ListOfList
-import com.snowplowanalytics.snowplow.lakes.{Environment, Metrics, RuntimeService}
+import com.snowplowanalytics.snowplow.lakes.{Environment, RuntimeService}
 import com.snowplowanalytics.snowplow.runtime.processing.BatchUp
 import com.snowplowanalytics.snowplow.runtime.syntax.foldable._
 import com.snowplowanalytics.snowplow.loaders.transform.{
@@ -56,8 +56,8 @@ object Processing {
         // Needed for Kinesis, where we want to subscribe to the stream as early as possible, so that other workers don't steal our shard leases
         Stream.eval(env.lakeWriter.createTable *> deferredTableExists.complete(()))
 
-      implicit val lookup: RegistryLookup[F]           = Http4sRegistryLookup(env.httpClient)
-      val eventProcessingConfig: EventProcessingConfig = EventProcessingConfig(env.windowing)
+      implicit val lookup: RegistryLookup[F] = Http4sRegistryLookup(env.httpClient)
+      val eventProcessingConfig              = EventProcessingConfig(env.windowing, env.metrics.setLatency)
 
       env.source
         .stream(eventProcessingConfig, eventProcessor(env, deferredTableExists.get))
@@ -120,8 +120,7 @@ object Processing {
     badProcessor: BadRowProcessor,
     ref: Ref[F, WindowState]
   ): Pipe[F, TokenedEvents, Nothing] =
-    _.through(setLatency(env.metrics))
-      .through(rememberTokens(ref))
+    _.through(rememberTokens(ref))
       .through(incrementReceivedCount(env))
       .through(parseBytes(env, badProcessor))
       .through(handleParseFailures(env, badProcessor))
@@ -167,22 +166,8 @@ object Processing {
 
     }.drain
 
-  private def setLatency[F[_]: Sync](metrics: Metrics[F]): Pipe[F, TokenedEvents, TokenedEvents] =
-    _.evalTap {
-      _.earliestSourceTstamp match {
-        case Some(t) =>
-          for {
-            now <- Sync[F].realTime
-            latency = now - t.toEpochMilli.millis
-            _ <- metrics.setLatency(latency)
-          } yield ()
-        case None =>
-          Applicative[F].unit
-      }
-    }
-
   private def rememberTokens[F[_]: Functor](ref: Ref[F, WindowState]): Pipe[F, TokenedEvents, Chunk[ByteBuffer]] =
-    _.evalMap { case TokenedEvents(events, token, _) =>
+    _.evalMap { case TokenedEvents(events, token) =>
       ref.update(state => state.copy(tokens = token :: state.tokens)).as(events)
     }
 

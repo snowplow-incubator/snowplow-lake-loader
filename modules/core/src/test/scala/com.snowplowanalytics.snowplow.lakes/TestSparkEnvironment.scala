@@ -60,7 +60,7 @@ object TestSparkEnvironment {
 
   private def testSourceAndAck(windows: List[List[TokenedEvents]]): SourceAndAck[IO] =
     new SourceAndAck[IO] {
-      def stream(config: EventProcessingConfig, processor: EventProcessor[IO]): Stream[IO, Nothing] =
+      def stream(config: EventProcessingConfig[IO], processor: EventProcessor[IO]): Stream[IO, Nothing] =
         Stream.emits(windows).flatMap { batches =>
           Stream
             .emits(batches)

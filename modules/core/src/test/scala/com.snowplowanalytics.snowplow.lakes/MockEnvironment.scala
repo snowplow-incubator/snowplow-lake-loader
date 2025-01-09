@@ -119,7 +119,7 @@ object MockEnvironment {
 
   private def testSourceAndAck(windows: List[List[TokenedEvents]], state: Ref[IO, Vector[Action]]): SourceAndAck[IO] =
     new SourceAndAck[IO] {
-      def stream(config: EventProcessingConfig, processor: EventProcessor[IO]): Stream[IO, Nothing] =
+      def stream(config: EventProcessingConfig[IO], processor: EventProcessor[IO]): Stream[IO, Nothing] =
         Stream.eval(state.update(_ :+ SubscribedToStream)).drain ++
           Stream.emits(windows).flatMap { batches =>
             Stream

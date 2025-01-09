@@ -28,7 +28,7 @@ object EventUtils {
         StandardCharsets.UTF_8.encode(e.toTsv)
       }
       IO.unique.map { ack =>
-        TokenedEvents(serialized, ack, None)
+        TokenedEvents(serialized, ack)
       }
     }
   }
@@ -60,7 +60,7 @@ object EventUtils {
   def badlyFormatted: IO[TokenedEvents] =
     IO.unique.map { token =>
       val serialized = Chunk("nonsense1", "nonsense2").map(s => ByteBuffer.wrap(s.getBytes(StandardCharsets.UTF_8)))
-      TokenedEvents(serialized, token, None)
+      TokenedEvents(serialized, token)
     }
 
 }

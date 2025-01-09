@@ -11,14 +11,10 @@
 package com.snowplowanalytics.snowplow.lakes.processing
 
 import cats.implicits._
-import cats.effect.IO
 import org.specs2.Specification
 import cats.effect.testing.specs2.CatsEffect
 import io.circe.Json
 import cats.effect.testkit.TestControl
-
-import java.time.Instant
-import scala.concurrent.duration.DurationLong
 
 import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer, SelfDescribingData}
 import com.snowplowanalytics.snowplow.analytics.scalasdk.SnowplowEvent
@@ -34,10 +30,9 @@ class ProcessingSpec extends Specification with CatsEffect {
     Write multiple windows of events in order $e3
     Write multiple batches in a single window when batch exceeds cutoff $e4
     Write good batches and bad events when a window contains both $e5
-    Set the latency metric based off the message timestamp $e6
-    Load events with a known schema $e7
-    Send failed events for an unrecognized schema $e8
-    Crash and exit for an unrecognized schema, if exitOnMissingIgluSchema is true $e9
+    Load events with a known schema $e6
+    Send failed events for an unrecognized schema $e7
+    Crash and exit for an unrecognized schema, if exitOnMissingIgluSchema is true $e8
   """
 
   def e1 = {
@@ -227,44 +222,6 @@ class ProcessingSpec extends Specification with CatsEffect {
   }
 
   def e6 = {
-    val messageTime = Instant.parse("2023-10-24T10:00:00.000Z")
-    val processTime = Instant.parse("2023-10-24T10:00:42.123Z").minusMillis(MockEnvironment.TimeTakenToCreateTable.toMillis)
-
-    val io = for {
-      inputs <- EventUtils.inputEvents(2, EventUtils.good())
-      tokened <- inputs.traverse(_.tokened).map {
-                   _.map {
-                     _.copy(earliestSourceTstamp = Some(messageTime))
-                   }
-                 }
-      control <- MockEnvironment.build(List(tokened))
-      _ <- IO.sleep(processTime.toEpochMilli.millis)
-      _ <- Processing.stream(control.environment).compile.drain
-      state <- control.state.get
-    } yield state should beEqualTo(
-      Vector(
-        Action.SubscribedToStream,
-        Action.CreatedTable,
-        Action.InitializedLocalDataFrame("v20231024100032"),
-        Action.SetLatencyMetric(42123.millis),
-        Action.AddedReceivedCountMetric(2),
-        Action.SetLatencyMetric(42123.millis),
-        Action.AddedReceivedCountMetric(2),
-        Action.AppendedRowsToDataFrame("v20231024100032", 4),
-        Action.CommittedToTheLake("v20231024100032"),
-        Action.AddedCommittedCountMetric(4),
-        Action.SetProcessingLatencyMetric(MockEnvironment.WindowDuration + MockEnvironment.TimeTakenToCreateTable),
-        Action
-          .SetE2ELatencyMetric(MockEnvironment.WindowDuration + MockEnvironment.TimeTakenToCreateTable + processTime.toEpochMilli.millis),
-        Action.Checkpointed(tokened.map(_.ack)),
-        Action.RemovedDataFrameFromDisk("v20231024100032")
-      )
-    )
-
-    TestControl.executeEmbed(io)
-  }
-
-  def e7 = {
 
     val ueGood700 = SnowplowEvent.UnstructEvent(
       Some(
@@ -302,7 +259,7 @@ class ProcessingSpec extends Specification with CatsEffect {
     TestControl.executeEmbed(io)
   }
 
-  def e8 = {
+  def e7 = {
 
     val ueDoesNotExist = SnowplowEvent.UnstructEvent(
       Some(
@@ -342,7 +299,7 @@ class ProcessingSpec extends Specification with CatsEffect {
     TestControl.executeEmbed(io)
   }
 
-  def e9 = {
+  def e8 = {
 
     val ueDoesNotExist = SnowplowEvent.UnstructEvent(
       Some(
