@@ -13,6 +13,7 @@ package com.snowplowanalytics.snowplow.lakes.processing
 import cats.implicits._
 import cats.data.NonEmptyList
 import cats.effect.{Async, Resource, Sync}
+import cats.effect.std.Mutex
 import org.apache.spark.sql.{Row, SparkSession}
 import org.apache.spark.sql.types.StructType
 
@@ -80,7 +81,9 @@ object LakeWriter {
     }
     for {
       session <- SparkUtils.session[F](config, w, target.location)
-    } yield impl(session, w)
+      writerParallelism = chooseWriterParallelism()
+      mutex <- Resource.eval(Mutex[F])
+    } yield impl(session, w, writerParallelism, mutex)
   }
 
   def withHandledErrors[F[_]: Async](
@@ -124,10 +127,15 @@ object LakeWriter {
 
   /**
    * Implementation of the LakeWriter
+   *
+   * The mutex is needed because we allow overlapping windows. They prevent two different windows
+   * from trying to run the same expensive operation at the same time.
    */
   private def impl[F[_]: Sync](
     spark: SparkSession,
-    w: Writer
+    w: Writer,
+    writerParallelism: Int,
+    mutex: Mutex[F]
   ): LakeWriter[F] = new LakeWriter[F] {
     def createTable: F[Unit] =
       w.prepareTable(spark)
@@ -147,8 +155,21 @@ object LakeWriter {
 
     def commit(viewName: String): F[Unit] =
       for {
-        df <- SparkUtils.prepareFinalDataFrame(spark, viewName)
-        _ <- w.write(df)
+        df <- SparkUtils.prepareFinalDataFrame(spark, viewName, writerParallelism)
+        _ <- mutex.lock
+               .surround {
+                 w.write(df)
+               }
       } yield ()
   }
+
+  /**
+   * Allow spark to parallelize over _most_ of the available processors for writing to the lake,
+   * because this speeds up how quickly we can sink a batch.
+   *
+   * But leave 1 processor always available, so that we are never blocked when trying to save one of
+   * the intermediate dataframes.
+   */
+  private def chooseWriterParallelism(): Int =
+    (Runtime.getRuntime.availableProcessors - 1).max(1)
 }

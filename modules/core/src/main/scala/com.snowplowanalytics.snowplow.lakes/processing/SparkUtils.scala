@@ -18,7 +18,7 @@ import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 
 import org.apache.spark.sql.{DataFrame, Row, SparkSession}
-import org.apache.spark.sql.functions.current_timestamp
+import org.apache.spark.sql.functions.{col, current_timestamp}
 import org.apache.spark.sql.types.StructType
 
 import com.snowplowanalytics.snowplow.lakes.Config
@@ -102,12 +102,14 @@ private[processing] object SparkUtils {
 
   def prepareFinalDataFrame[F[_]: Sync](
     spark: SparkSession,
-    viewName: String
+    viewName: String,
+    writerParallelism: Int
   ): F[DataFrame] =
     Sync[F].delay {
       spark
         .table(viewName)
-        .sort("event_name")
+        .repartitionByRange(writerParallelism, col("event_name"), col("event_id"))
+        .sortWithinPartitions("event_name")
         .withColumn("load_tstamp", current_timestamp())
     }
 
