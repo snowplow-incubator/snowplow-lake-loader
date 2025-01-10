@@ -27,7 +27,7 @@ object GcpApp extends LoaderApp[PubsubSourceConfig, PubsubSinkConfig](BuildInfo)
   override def isDestinationSetupError: DestinationSetupErrorCheck = {
     // Bad Request - Key belongs to nonexistent service account
     case e: TokenResponseException if e.getStatusCode === 400 =>
-     "The service account key is invalid"
+      "The service account key is invalid"
     // Forbidden - Permissions missing for Cloud Storage
     case e: GoogleJsonResponseException if Option(e.getDetails).map(_.getCode).contains(403) =>
       e.getDetails.getMessage
