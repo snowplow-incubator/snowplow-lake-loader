@@ -15,12 +15,12 @@ object Dependencies {
     object Spark {
 
       // A version of Spark which is compatible with the current version of Iceberg and Delta
-      val forIcebergDelta      = "3.5.3"
+      val forIcebergDelta      = "3.5.4"
       val forIcebergDeltaMinor = "3.5"
 
       // Hudi can use a different version of Spark because we bundle a separate Docker image
       // This version of Spark must be compatible with the current version of Hudi
-      val forHudi      = "3.5.3"
+      val forHudi      = "3.5.4"
       val forHudiMinor = "3.5"
     }
 
@@ -35,7 +35,7 @@ object Dependencies {
     val delta        = "3.2.1"
     val hudi         = "0.15.0"
     val hudiAws      = "1.0.0-beta2"
-    val iceberg      = "1.6.1"
+    val iceberg      = "1.7.1"
     val hadoop       = "3.4.1"
     val gcsConnector = "hadoop3-2.2.25"
     val hive         = "3.1.3"

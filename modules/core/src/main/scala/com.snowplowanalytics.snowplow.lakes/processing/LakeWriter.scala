@@ -81,10 +81,9 @@ object LakeWriter {
     }
     for {
       session <- SparkUtils.session[F](config, w, target.location)
-      writerParallelism = chooseWriterParallelism(config)
-      mutex1 <- Resource.eval(Mutex[F])
-      mutex2 <- Resource.eval(Mutex[F])
-    } yield impl(session, w, writerParallelism, mutex1, mutex2)
+      writerParallelism = chooseWriterParallelism()
+      mutex <- Resource.eval(Mutex[F])
+    } yield impl(session, w, writerParallelism, mutex)
   }
 
   def withHandledErrors[F[_]: Async](
@@ -129,22 +128,14 @@ object LakeWriter {
   /**
    * Implementation of the LakeWriter
    *
-   * The mutexes are needed because we allow overlapping windows. They prevent two different windows
+   * The mutex is needed because we allow overlapping windows. They prevent two different windows
    * from trying to run the same expensive operation at the same time.
-   *
-   * @param mutextForWriting
-   *   Makes sure there is only ever one spark job trying to write events to the lake. This is a
-   *   IO-intensive task.
-   * @param mutexForUnioning
-   *   Makes sure there is only ever one spark job trying to union smaller DataFrames into a larger
-   *   DataFrame, immediately before writing to the lake. This is a cpu-intensive task.
    */
   private def impl[F[_]: Sync](
     spark: SparkSession,
     w: Writer,
     writerParallelism: Int,
-    mutexForWriting: Mutex[F],
-    mutexForUnioning: Mutex[F]
+    mutex: Mutex[F]
   ): LakeWriter[F] = new LakeWriter[F] {
     def createTable: F[Unit] =
       w.prepareTable(spark)
@@ -164,10 +155,8 @@ object LakeWriter {
 
     def commit(viewName: String): F[Unit] =
       for {
-        df <- mutexForUnioning.lock.surround {
-                SparkUtils.prepareFinalDataFrame(spark, viewName, writerParallelism)
-              }
-        _ <- mutexForWriting.lock
+        df <- SparkUtils.prepareFinalDataFrame(spark, viewName, writerParallelism)
+        _ <- mutex.lock
                .surround {
                  w.write(df)
                }
@@ -175,14 +164,12 @@ object LakeWriter {
   }
 
   /**
-   * Converts `writerParallelismFraction` into a suggested number of threads
+   * Allow spark to parallelize over _most_ of the available processors for writing to the lake,
+   * because this speeds up how quickly we can sink a batch.
    *
-   * For bigger instances (more cores) we want more parallelism in the writer. This avoids a
-   * situation where writing tasks exceed the length of a window, which causes an unbalanced use of
-   * cpu.
+   * But leave 1 processor always available, so that we are never blocked when trying to save one of
+   * the intermediate dataframes.
    */
-  private def chooseWriterParallelism(config: Config.Spark): Int =
-    (Runtime.getRuntime.availableProcessors * config.writerParallelismFraction)
-      .setScale(0, BigDecimal.RoundingMode.UP)
-      .toInt
+  private def chooseWriterParallelism(): Int =
+    (Runtime.getRuntime.availableProcessors - 1).max(1)
 }
