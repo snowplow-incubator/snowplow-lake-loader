@@ -49,7 +49,7 @@ object Dependencies {
     val awsRegistry = "1.1.20"
 
     // Snowplow
-    val streams    = "0.8.2-M1"
+    val streams    = "0.10.0-M3"
     val igluClient = "4.0.0"
 
     // Transitive overrides
