@@ -155,7 +155,7 @@ object LakeWriter {
 
     def commit(viewName: String): F[Unit] =
       for {
-        df <- SparkUtils.prepareFinalDataFrame(spark, viewName, writerParallelism)
+        df <- SparkUtils.prepareFinalDataFrame(spark, viewName, writerParallelism, w.expectsSortedDataframe)
         _ <- mutex.lock
                .surround {
                  w.write(df)

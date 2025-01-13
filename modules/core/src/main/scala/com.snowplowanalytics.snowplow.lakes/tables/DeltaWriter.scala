@@ -111,4 +111,5 @@ class DeltaWriter(config: Config.Delta) extends Writer {
    */
   override def toleratesAsyncDelete: Boolean = true
 
+  override def expectsSortedDataframe: Boolean = false
 }
