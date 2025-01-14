@@ -36,4 +36,10 @@ trait Writer {
    * If tolerated, then we use our customized `LakeLoaderFileSystem`.
    */
   def toleratesAsyncDelete: Boolean
+
+  /**
+   * Whether this writer expects the DataFrame to be sorted by the partition column, i.e. by
+   * event_name
+   */
+  def expectsSortedDataframe: Boolean
 }

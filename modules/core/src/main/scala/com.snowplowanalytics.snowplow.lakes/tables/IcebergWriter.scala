@@ -112,4 +112,10 @@ class IcebergWriter(config: Config.Iceberg) extends Writer {
    * re-writes a file that was previously deleted
    */
   override def toleratesAsyncDelete: Boolean = true
+
+  /**
+   * Iceberg writer requires the Dataframe to be sorted, because we set the iceberg write option
+   * `distribution-mode = none`
+   */
+  override def expectsSortedDataframe: Boolean = true
 }

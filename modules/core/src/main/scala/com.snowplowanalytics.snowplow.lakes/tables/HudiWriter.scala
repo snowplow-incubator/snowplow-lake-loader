@@ -94,4 +94,6 @@ class HudiWriter(config: Config.Hudi) extends Writer {
    * steps must happen in order.
    */
   override def toleratesAsyncDelete: Boolean = false
+
+  override def expectsSortedDataframe: Boolean = false
 }

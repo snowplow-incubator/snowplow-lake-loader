@@ -103,15 +103,18 @@ private[processing] object SparkUtils {
   def prepareFinalDataFrame[F[_]: Sync](
     spark: SparkSession,
     viewName: String,
-    writerParallelism: Int
+    writerParallelism: Int,
+    writerExpectsSortedDataframe: Boolean
   ): F[DataFrame] =
-    Sync[F].delay {
-      spark
-        .table(viewName)
-        .repartitionByRange(writerParallelism, col("event_name"), col("event_id"))
-        .sortWithinPartitions("event_name")
-        .withColumn("load_tstamp", current_timestamp())
-    }
+    for {
+      df <- Sync[F].pure(spark.table(viewName))
+      df <- Sync[F].pure {
+              // Create equally-balanced partitions, for which events with similar event_name are likely to be in the same partition.
+              // This maximizes output file sizes, for a lake which is partitioned by event_name.
+              if (writerParallelism > 1) df.repartitionByRange(writerParallelism, col("event_name"), col("event_id")) else df.coalesce(1)
+            }
+      df <- Sync[F].pure(if (writerExpectsSortedDataframe) df.sortWithinPartitions("event_name") else df)
+    } yield df.withColumn("load_tstamp", current_timestamp())
 
   def dropView[F[_]: Sync](spark: SparkSession, viewName: String): F[Unit] =
     Logger[F].info(s"Removing Spark data frame $viewName from local disk...") >>
