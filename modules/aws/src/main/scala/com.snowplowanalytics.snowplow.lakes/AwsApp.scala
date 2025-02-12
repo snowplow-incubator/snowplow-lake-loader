@@ -48,7 +48,9 @@ object AwsApp extends LoaderApp[KinesisSourceConfig, KinesisSinkConfig](BuildInf
       "S3 bucket does not exist or we do not have permissions to see it exists"
     case e: S3Exception if e.statusCode() === 403 =>
       // No permission to read from S3 bucket or to write to S3 bucket
-      "Missing permissions to perform this action on S3 bucket"
+      extractS3Action(e).fold("Missing permission to perform this action on S3 bucket") { action =>
+        s"Missing $action permission to perform this action on S3 bucket"
+      }
     case e: S3Exception if e.statusCode() === 301 =>
       // Misconfigured AWS region
       "S3 bucket is not in the expected region"
@@ -103,4 +105,15 @@ object AwsApp extends LoaderApp[KinesisSourceConfig, KinesisSinkConfig](BuildInf
       case None =>
         t.getMessage
     }
+
+  /**
+   * Extracts s3:ActionName from exception message if possible
+   *
+   * Example exception message is as below: User: arn:aws:sts::...loader is not authorized to
+   * perform: s3:PutObject on resource: "arn:aws:s3:::bucket-name/....json" because no
+   * identity-based policy allows the s3:PutObject action (Service: S3, Status Code: 403, Request
+   * ID: req-id, Extended Request ID: ext-req-id)
+   */
+  private def extractS3Action(s3Exception: S3Exception): Option[String] =
+    s3Exception.getMessage.split(" ").filter(_.startsWith("s3:")).distinct.headOption
 }
