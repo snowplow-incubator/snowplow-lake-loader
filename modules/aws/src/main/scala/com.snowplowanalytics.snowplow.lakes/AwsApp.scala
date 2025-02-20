@@ -48,13 +48,13 @@ object AwsApp extends LoaderApp[KinesisSourceConfig, KinesisSinkConfig](BuildInf
       "S3 bucket does not exist or we do not have permissions to see it exists"
     case e: S3Exception if e.statusCode() === 403 =>
       // No permission to read from S3 bucket or to write to S3 bucket
-      extractMissingPermission(e)
+      extractMissingS3Permission(e)
     case e: S3Exception if e.statusCode() === 301 =>
       // Misconfigured AWS region
       "S3 bucket is not in the expected region"
     case e: GlueAccessDeniedException =>
       // No permission to read from Glue catalog
-      Option(e.getMessage).getOrElse("Missing permissions to perform this action on Glue catalog")
+      extractMissingGluePermission(e)
     case _: GlueEntityNotFoundException =>
       // Glue database does not exist
       "Glue resource does not exist or no permission to see it exists"
@@ -112,13 +112,26 @@ object AwsApp extends LoaderApp[KinesisSourceConfig, KinesisSinkConfig](BuildInf
    * identity-based policy allows the s3:PutObject action (Service: S3, Status Code: 403, Request
    * ID: req-id, Extended Request ID: ext-req-id)
    */
-  private def extractMissingPermission(s3Exception: S3Exception): String = {
+  private def extractMissingS3Permission(s3Exception: S3Exception): String = {
     val pattern = """.*is not authorized to perform: s3:(\w+).*""".r
     s3Exception.getMessage match {
       case pattern(action) =>
         s"Missing s3:$action permission on the S3 bucket"
       case _ =>
         "Missing permission on the S3 bucket"
+    }
+  }
+
+  /**
+   * Extracts glue:ActionName from exception message if possible
+   */
+  private def extractMissingGluePermission(glueException: GlueAccessDeniedException): String = {
+    val pattern = """.*is not authorized to perform: glue:(\w+).*""".r
+    Option(glueException.getMessage) match {
+      case Some(pattern(action)) =>
+        s"Missing glue:$action permission on the Glue catalog"
+      case _ =>
+        "Missing permission on the Glue catalog"
     }
   }
 }
