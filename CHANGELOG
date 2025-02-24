@@ -1,3 +1,10 @@
+Version 0.6.1 (2025-02-24)
+-------------------------
+Extract missing S3 IAM action for AWS app (#111)
+Better Iceberg table properties for metadata files (#113)
+Extract missing Glue IAM permission (#114)
+Upgrade dependencies (#115)
+
 Version 0.6.0 (2025-01-14)
 --------------------------
 common-streams 0.10.0
