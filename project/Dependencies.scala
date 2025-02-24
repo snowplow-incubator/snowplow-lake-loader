@@ -47,6 +47,7 @@ object Dependencies {
     val awsSdk1     = "1.12.777"
     val awsSdk2     = "2.29.0" // Match common-streams
     val awsRegistry = "1.1.20"
+    val jsonSmart   = "2.5.2"
 
     // Snowplow
     val streams    = "0.10.0"
@@ -56,7 +57,7 @@ object Dependencies {
     val protobuf  = "3.25.5"
     val snappy    = "1.1.10.5"
     val thrift    = "0.21.0"
-    val netty     = "4.1.114.Final"
+    val netty     = "4.1.118.Final"
     val pubsubSdk = "1.134.1"
     val avro      = "1.11.4"
     val jackson   = "2.17.2"
@@ -103,6 +104,7 @@ object Dependencies {
   val awsSts        = "software.amazon.awssdk" % "sts"                   % V.awsSdk2
   val dynamodbSdk1  = "com.amazonaws"          % "aws-java-sdk-dynamodb" % V.awsSdk1
   val awsRegistry   = "software.amazon.glue"   % "schema-registry-serde" % V.awsRegistry
+  val jsonSmart     = "net.minidev"            % "json-smart"            % V.jsonSmart
 
   // transitive overrides
   val protobuf     = "com.google.protobuf"            % "protobuf-java"                      % V.protobuf
@@ -184,6 +186,7 @@ object Dependencies {
     azureIdentity,
     hadoopAzure,
     hadoopClient,
+    jsonSmart,
     kafkaClients % Runtime,
     specs2
   ) ++ commonRuntimeDependencies
