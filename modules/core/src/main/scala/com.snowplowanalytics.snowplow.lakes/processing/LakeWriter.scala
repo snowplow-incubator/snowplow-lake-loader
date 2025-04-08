@@ -82,8 +82,9 @@ object LakeWriter {
     for {
       session <- SparkUtils.session[F](config, w, target.location)
       writerParallelism = chooseWriterParallelism()
-      mutex <- Resource.eval(Mutex[F])
-    } yield impl(session, w, writerParallelism, mutex)
+      mutex1 <- Resource.eval(Mutex[F])
+      mutex2 <- Resource.eval(Mutex[F])
+    } yield impl(session, w, writerParallelism, mutex1, mutex2)
   }
 
   def withHandledErrors[F[_]: Async](
@@ -128,14 +129,23 @@ object LakeWriter {
   /**
    * Implementation of the LakeWriter
    *
-   * The mutex is needed because we allow overlapping windows. They prevent two different windows
+   * The mutexes are needed because we allow overlapping windows. They prevent two different windows
    * from trying to run the same expensive operation at the same time.
+   *
+   * @param mutexForRemoteWriting
+   *   This mutex is needed because we allow overlapping windows. It prevents two different windows
+   *   from trying to run the same expensive operation at the same time
+   * @param mutexForLocalAppending
+   *   This mutex is needed because `SparkUtils.localAppendRows` would otherwise have a race
+   *   condition: It fetches a saved dataframe by name, modifies it, and re-saves the dataframe by
+   *   the same name.
    */
   private def impl[F[_]: Sync](
     spark: SparkSession,
     w: Writer,
     writerParallelism: Int,
-    mutex: Mutex[F]
+    mutexForRemoteWriting: Mutex[F],
+    mutexForLocalAppending: Mutex[F]
   ): LakeWriter[F] = new LakeWriter[F] {
     def createTable: F[Unit] =
       w.prepareTable(spark)
@@ -148,7 +158,9 @@ object LakeWriter {
       rows: NonEmptyList[Row],
       schema: StructType
     ): F[Unit] =
-      SparkUtils.localAppendRows(spark, viewName, rows, schema)
+      mutexForLocalAppending.lock.surround {
+        SparkUtils.localAppendRows(spark, viewName, rows, schema)
+      }
 
     def removeDataFrameFromDisk(viewName: String) =
       SparkUtils.dropView(spark, viewName)
@@ -156,7 +168,7 @@ object LakeWriter {
     def commit(viewName: String): F[Unit] =
       for {
         df <- SparkUtils.prepareFinalDataFrame(spark, viewName, writerParallelism, w.expectsSortedDataframe)
-        _ <- mutex.lock
+        _ <- mutexForRemoteWriting.lock
                .surround {
                  w.write(df)
                }
