@@ -129,9 +129,6 @@ object LakeWriter {
   /**
    * Implementation of the LakeWriter
    *
-   * The mutexes are needed because we allow overlapping windows. They prevent two different windows
-   * from trying to run the same expensive operation at the same time.
-   *
    * @param mutexForRemoteWriting
    *   This mutex is needed because we allow overlapping windows. It prevents two different windows
    *   from trying to run the same expensive operation at the same time
