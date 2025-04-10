@@ -1,3 +1,8 @@
+Version 0.6.2 (2025-04-11)
+-------------------------
+Bump Iceberg to 1.8.1
+Fix unlikely race condition in LakeWriter (#117)
+
 Version 0.6.1 (2025-02-24)
 -------------------------
 Extract missing S3 IAM action for AWS app (#111)
