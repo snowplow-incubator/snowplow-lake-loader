@@ -17,7 +17,7 @@ import cats.syntax.traverse._
 import com.github.luben.zstd.ZstdOutputStream
 import fs2.{Chunk, Stream}
 import com.snowplowanalytics.snowplow.streams.TokenedEvents
-import com.snowplowanalytics.snowplow.streams.compression.{Compressor, GzipCompressor, ZstdCompressor}
+import com.snowplowanalytics.snowplow.streams.compression.CompressorFactory
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
 import com.snowplowanalytics.snowplow.analytics.scalasdk.SnowplowEvent.{Contexts, UnstructEvent}
 
@@ -75,30 +75,30 @@ object EventUtils {
       TokenedEvents(serialized, token)
     }
 
-  private val zstdFactory = ZstdCompressor.factory(3)
-  private val gzipFactory = GzipCompressor.factory(6)
+  private val zstdFactory = CompressorFactory.zstd(3)
+  private val gzipFactory = CompressorFactory.gzip(6)
 
   /** Two events compressed into a single zstd-compressed Snowplow record */
   def goodZstdCompressed: IO[TokenedEvents] =
-    mkBytes(2).map { case (ack, bytes) =>
-      TokenedEvents(Chunk(compress(zstdFactory, bytes)), ack)
+    mkBytes(2).flatMap { case (ack, bytes) =>
+      compress(zstdFactory, bytes).map(compressed => TokenedEvents(Chunk(compressed), ack))
     }
 
   /** Two events compressed into a single gzip-compressed Snowplow record */
   def goodGzipCompressed: IO[TokenedEvents] =
-    mkBytes(2).map { case (ack, bytes) =>
-      TokenedEvents(Chunk(compress(gzipFactory, bytes)), ack)
+    mkBytes(2).flatMap { case (ack, bytes) =>
+      compress(gzipFactory, bytes).map(compressed => TokenedEvents(Chunk(compressed), ack))
     }
 
   /**
    * Three events — one plain, one zstd-compressed, one gzip-compressed — in the same TokenedEvents
    */
   def goodMixed: IO[TokenedEvents] =
-    mkBytes(3).map { case (ack, bytes) =>
-      val plain          = ByteBuffer.wrap(bytes(0))
-      val zstdCompressed = compress(zstdFactory, List(bytes(1)))
-      val gzipCompressed = compress(gzipFactory, List(bytes(2)))
-      TokenedEvents(Chunk(plain, zstdCompressed, gzipCompressed), ack)
+    mkBytes(3).flatMap { case (ack, bytes) =>
+      for {
+        zstdCompressed <- compress(zstdFactory, List(bytes(1)))
+        gzipCompressed <- compress(gzipFactory, List(bytes(2)))
+      } yield TokenedEvents(Chunk(ByteBuffer.wrap(bytes(0)), zstdCompressed, gzipCompressed), ack)
     }
 
   /**
@@ -129,11 +129,10 @@ object EventUtils {
       ack <- IO.unique
       id <- IO.randomUUID
       now <- IO.realTimeInstant
-    } yield {
-      val good      = Event.minimal(id, now, "0.0.0", "0.0.0").toTsv.getBytes(StandardCharsets.UTF_8)
-      val oversized = Array.fill[Byte](oversizedBytes)('a'.toByte)
-      TokenedEvents(Chunk(compress(zstdFactory, List(good, oversized))), ack)
-    }
+      good      = Event.minimal(id, now, "0.0.0", "0.0.0").toTsv.getBytes(StandardCharsets.UTF_8)
+      oversized = Array.fill[Byte](oversizedBytes)('a'.toByte)
+      compressed <- compress(zstdFactory, List(good, oversized))
+    } yield TokenedEvents(Chunk(compressed), ack)
 
   private def mkBytes(n: Int): IO[(Unique.Token, List[Array[Byte]])] =
     for {
@@ -145,12 +144,15 @@ object EventUtils {
       (ack, bytes)
     }
 
-  private def compress(factory: Compressor.Factory, tsvBytes: List[Array[Byte]]): ByteBuffer = {
-    val compressor = factory.buildAndInitialize(1000000, 1)
-    tsvBytes.foreach { bytes =>
-      val _ = compressor.addRecord(bytes, 0, bytes.length)
+  private def compress(factory: CompressorFactory, tsvBytes: List[Array[Byte]]): IO[ByteBuffer] =
+    factory.resource[IO].use { compressor =>
+      IO {
+        compressor.reset(payloadVersion = 1, targetSize = 1000000)
+        tsvBytes.foreach { bytes =>
+          val _ = compressor.addRecord(bytes, 0, bytes.length)
+        }
+        compressor.result
+      }
     }
-    compressor.result
-  }
 
 }

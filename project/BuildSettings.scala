@@ -42,7 +42,7 @@ object BuildSettings {
 
   lazy val commonSettings = Seq(
     organization := "com.snowplowanalytics",
-    scalaVersion := "2.13.16",
+    scalaVersion := "2.13.18",
     scalafmtConfig := file(".scalafmt.conf"),
     scalafmtOnCompile := false,
     // Target Java 21 bytecode and restrict API to Java 21
@@ -93,7 +93,8 @@ object BuildSettings {
     name := "lake-loader-aws",
     buildInfoKeys += BuildInfoKey("cloud" -> "AWS"),
 
-    // TODO: Remove this after Hadoop 3.5.0 is released with full support for V2 SDK
+    // Delta's S3DynamoDBLogStore still authenticates through the AWS v1 SDK, which prints a
+    // deprecation announcement on first use. Remove this once delta-storage-s3-dynamodb moves to v2.
     dockerEnvVars += ("AWS_JAVA_V1_DISABLE_DEPRECATION_ANNOUNCEMENT" -> "true"),
 
     // Set Java module flags via JAVA_OPTS environment variable

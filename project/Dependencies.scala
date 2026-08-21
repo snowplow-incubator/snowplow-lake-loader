@@ -15,8 +15,8 @@ object Dependencies {
     object Spark {
 
       // A version of Spark which is compatible with the current version of Iceberg and Delta
-      val forIcebergDelta      = "3.5.8"
-      val forIcebergDeltaMinor = "3.5"
+      val forIcebergDelta      = "4.1.3"
+      val forIcebergDeltaMinor = "4.1"
     }
 
     // Scala
@@ -27,11 +27,10 @@ object Dependencies {
     val betterMonadicFor = "0.3.1"
 
     // Spark
-    val delta        = "3.3.2"
-    val iceberg      = "1.11.0"
-    val hadoop       = "3.4.3"
-    val gcsConnector = "hadoop3-2.2.25"
-    val hive         = "3.1.3"
+    val delta              = "4.3.1"
+    val iceberg            = "1.11.0"
+    val hadoop             = "3.5.0"
+    val googleCloudStorage = "2.70.0"
 
     // java
     val slf4j       = "2.0.13"
@@ -42,23 +41,17 @@ object Dependencies {
     val jsonSmart   = "2.5.2"
 
     // Snowplow
-    val streams    = "0.24.1"
-    val igluClient = "4.0.0"
+    val streams    = "0.26.0"
+    val igluClient = "4.2.1"
 
     // Transitive overrides
-    val protobuf      = "3.25.5"
-    val snappy        = "1.1.10.5"
-    val netty         = "4.1.135.Final"
-    val pubsubSdk     = "1.134.1"
-    val jackson       = "2.18.7"
     val kafka         = "3.9.2"
-    val grpcNetty     = "1.75.0"
-    val commonsLang3  = "3.18.0"
-    val lz4           = "1.10.1"
+    val lz4           = "1.11.1"
     val log4jCore     = "2.25.4"
-    val aircompressor = "2.0.3"
     val micrometer    = "1.16.6"
     val opentelemetry = "1.62.0"
+    val netty         = "4.2.16.Final"
+    val bouncyCastle  = "1.85"
 
     // tests
     val specs2           = "4.20.0"
@@ -76,14 +69,18 @@ object Dependencies {
   }
 
   // spark and hadoop
-  val delta         = "io.delta"                   %% "delta-spark"                                            % V.delta
-  val deltaDynamodb = "io.delta"                    % "delta-storage-s3-dynamodb"                              % V.delta
-  val iceberg       = "org.apache.iceberg"         %% s"iceberg-spark-runtime-${V.Spark.forIcebergDeltaMinor}" % V.iceberg
-  val hadoopClient  = "org.apache.hadoop"           % "hadoop-client-runtime"                                  % V.hadoop
-  val hadoopAzure   = "org.apache.hadoop"           % "hadoop-azure"                                           % V.hadoop
-  val hadoopAws     = "org.apache.hadoop"           % "hadoop-aws"                                             % V.hadoop
-  val gcsConnector  = "com.google.cloud.bigdataoss" % "gcs-connector"                                          % V.gcsConnector
-  val hiveCommon    = "org.apache.hive"             % "hive-common"                                            % V.hive
+  val delta         = "io.delta"           %% s"delta-spark_${V.Spark.forIcebergDeltaMinor}"           % V.delta
+  val deltaDynamodb = "io.delta"            % "delta-storage-s3-dynamodb"                              % V.delta
+  val iceberg       = "org.apache.iceberg" %% s"iceberg-spark-runtime-${V.Spark.forIcebergDeltaMinor}" % V.iceberg
+  val hadoopClient  = "org.apache.hadoop"   % "hadoop-client-runtime"                                  % V.hadoop
+  val hadoopAzure   = "org.apache.hadoop"   % "hadoop-azure"                                           % V.hadoop
+  val hadoopAws     = "org.apache.hadoop"   % "hadoop-aws"                                             % V.hadoop
+  val hadoopGcp     = "org.apache.hadoop"   % "hadoop-gcp"                                             % V.hadoop
+  // Iceberg's ResolvingFileIO maps gs:// to GCSFileIO: iceberg-spark-runtime bundles that class
+  // but not the java-storage client behind it, which previously reached the classpath only as a
+  // transitive dependency of the removed bigdataoss gcsio. Also provides the plain exception
+  // classes GcpApp's triage matches for the Iceberg REST catalog path.
+  val googleCloudStorage = "com.google.cloud" % "google-cloud-storage" % V.googleCloudStorage
 
   // java
   val slf4j         = "org.slf4j"              % "slf4j-simple"          % V.slf4j
@@ -98,22 +95,50 @@ object Dependencies {
   val jsonSmart     = "net.minidev"            % "json-smart"            % V.jsonSmart
 
   // transitive overrides
-  val protobuf      = "com.google.protobuf"            % "protobuf-java"                      % V.protobuf
-  val snappy        = "org.xerial.snappy"              % "snappy-java"                        % V.snappy
-  val hadoopYarn    = "org.apache.hadoop"              % "hadoop-yarn-server-resourcemanager" % V.hadoop
-  val netty         = "io.netty"                       % "netty-all"                          % V.netty
-  val awsCore       = "com.amazonaws"                  % "aws-java-sdk-core"                  % V.awsSdk1
-  val pubsubSdk     = "com.google.cloud"               % "google-cloud-pubsub"                % V.pubsubSdk
-  val jacksonDT     = "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310"            % V.jackson
-  val jacksonMS     = "com.fasterxml.jackson.module"  %% "jackson-module-scala"               % V.jackson
-  val kafkaClients  = "org.apache.kafka"               % "kafka-clients"                      % V.kafka
-  val grpcNetty     = "io.grpc"                        % "grpc-netty-shaded"                  % V.grpcNetty
-  val commonsLang3  = "org.apache.commons"             % "commons-lang3"                      % V.commonsLang3
-  val lz4           = "at.yawk.lz4"                    % "lz4-java"                           % V.lz4
-  val log4jCore     = "org.apache.logging.log4j"       % "log4j-core"                         % V.log4jCore
-  val aircompressor = "io.airlift"                     % "aircompressor"                      % V.aircompressor
-  val micrometer    = "io.micrometer"                  % "micrometer-core"                    % V.micrometer
-  val opentelemetry = "io.opentelemetry"               % "opentelemetry-api"                  % V.opentelemetry
+  val kafkaClients  = "org.apache.kafka"         % "kafka-clients"     % V.kafka
+  val lz4           = "at.yawk.lz4"              % "lz4-java"          % V.lz4
+  val log4jCore     = "org.apache.logging.log4j" % "log4j-core"        % V.log4jCore
+  val micrometer    = "io.micrometer"            % "micrometer-core"   % V.micrometer
+  val opentelemetry = "io.opentelemetry"         % "opentelemetry-api" % V.opentelemetry
+  // Spark pulls Netty's aggregator netty-all, which has a non-optional dependency on a
+  // vulnerable bcprov-jdk18on 1.80; pin it to a patched version.
+  val bouncyCastle = "org.bouncycastle" % "bcprov-jdk18on" % V.bouncyCastle
+
+  // Bump the whole Netty family (pulled transitively by Spark and the AWS SDK) to a patched
+  // version. Netty modules must share a version, so every module on the classpath is listed
+  // and pinned together via highest-wins. netty-all is deliberately excluded: it is a classless
+  // aggregator whose non-optional dependencies would drag in unused protocol modules (mqtt,
+  // redis, rxtx, ...) if declared directly.
+  private val nettyModules = Seq(
+    "netty-buffer",
+    "netty-codec",
+    "netty-codec-base",
+    "netty-codec-classes-quic",
+    "netty-codec-compression",
+    "netty-codec-dns",
+    "netty-codec-http",
+    "netty-codec-http2",
+    "netty-codec-http3",
+    "netty-codec-marshalling",
+    "netty-codec-native-quic",
+    "netty-codec-protobuf",
+    "netty-codec-socks",
+    "netty-common",
+    "netty-handler",
+    "netty-handler-proxy",
+    "netty-resolver",
+    "netty-resolver-dns",
+    "netty-transport",
+    "netty-transport-classes-epoll",
+    "netty-transport-classes-io_uring",
+    "netty-transport-classes-kqueue",
+    "netty-transport-native-epoll",
+    "netty-transport-native-io_uring",
+    "netty-transport-native-kqueue",
+    "netty-transport-native-unix-common"
+  )
+
+  val nettyDependencies: Seq[ModuleID] = nettyModules.map("io.netty" % _ % V.netty)
 
   // snowplow
   val streamsCore      = "com.snowplowanalytics" %% "streams-core"             % V.streams
@@ -130,12 +155,8 @@ object Dependencies {
   val catsEffectSpecs2  = "org.typelevel" %% "cats-effect-testing-specs2" % V.catsEffectSpecs2 % Test
 
   val commonRuntimeDependencies = Seq(
-    slf4j         % Runtime,
-    protobuf      % Runtime,
-    netty         % Runtime,
-    snappy        % Runtime,
-    aircompressor % Runtime,
-    micrometer    % Runtime
+    slf4j      % Runtime,
+    micrometer % Runtime
   )
 
   val coreDependencies = Seq(
@@ -146,25 +167,22 @@ object Dependencies {
     Spark.coreForIcebergDelta,
     Spark.sqlForIcebergDelta,
     iceberg,
-    jacksonDT,
-    jacksonMS,
     igluClientHttp4s,
     decline,
     circeGenericExtra,
     hadoopClient,
-    commonsLang3,
     lz4,
     log4jCore,
+    bouncyCastle,
     specs2,
     catsEffectSpecs2,
     catsEffectTestkit,
     slf4j % Test
-  ) ++ commonRuntimeDependencies
+  ) ++ commonRuntimeDependencies ++ nettyDependencies
 
   val awsDependencies = Seq(
     kinesis,
     hadoopAws.exclude("software.amazon.awssdk", "bundle"),
-    awsCore, // Dependency on aws sdk v1 will likely be removed in the next release of hadoop-aws
     awsS3,
     awsGlue,
     awsSts,
@@ -186,9 +204,8 @@ object Dependencies {
 
   val gcpDependencies = Seq(
     pubsub,
-    pubsubSdk,
-    gcsConnector,
-    grpcNetty,
+    hadoopGcp,
+    googleCloudStorage,
     opentelemetry % Runtime
   ) ++ commonRuntimeDependencies
 
@@ -201,7 +218,6 @@ object Dependencies {
     ExclusionRule(organization = "org.apache.kerby"),
     ExclusionRule(organization = "org.apache.hadoop", name        = "hadoop-yarn-server-applicationhistoryservice"),
     ExclusionRule(organization = "org.apache.hadoop", name        = "hadoop-yarn-server-common"),
-    ExclusionRule(organization = "org.apache.ivy", name           = "ivy"),
     ExclusionRule(organization = "com.github.joshelser", name     = "dropwizard-metrics-hadoop-metrics2-reporter"),
     ExclusionRule(organization = "org.apache.logging.log4j", name = "log4j-slf4j2-impl"),
     ExclusionRule(organization = "org.lz4", name                  = "lz4-java") // replaced by at.yawk.lz4:lz4-java

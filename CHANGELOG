@@ -1,3 +1,16 @@
+Version 0.12.0 (2026-08-04)
+---------------------------
+Bump dependencies to fix CVEs (#64)
+Stage each window batch as one partition to fix single-task window reads (#63)
+Triage BigLake setup errors (#62)
+Emit an actionable alert when the catalog rejects a write for metadata size (#61)
+Fix misclassified transient REST catalog errors (#60)
+Enable spark.rdd.compress by default (#59)
+Migrate GCS access from bigdataoss gcs-connector to hadoop-gcp (#57)
+Bump Spark to 4.1.3 and Delta to 4.3.1 (#58)
+Bump common-streams to 0.25.0 (#56)
+Upgrade to Spark 4 and Hadoop 3.5 (#55)
+
 Version 0.11.0 (2026-06-16)
 ---------------------------
 Bump dependencies to fix CVEs (#52)

@@ -13,14 +13,20 @@ package org.apache.spark.sql
 import org.apache.spark.sql.types.StructType
 
 // Intentionally placed in org.apache.spark.sql so that scalac permits the call to
-// SparkSession.internalCreateDataFrame, which is private[sql].
+// classic.SparkSession.internalCreateDataFrame, which is private[sql] (a qualifier enforced by
+// scalac from the pickled Scala signature, even though the method is a public JVM member).
 //
 // reattachSchema passes the DataFrame's existing RDD[InternalRow] directly to
 // internalCreateDataFrame, bypassing the InternalRow→Row→InternalRow roundtrip that
-// the public createDataFrame(rdd: RDD[Row], schema) incurs. The isStreaming parameter
-// defaults to false, which is correct for the batch accumulation use case here.
+// the public createDataFrame(rdd: RDD[Row], schema) API incurs (nullability is
+// metadata-only: it is never enforced at runtime).
+//
+// internalCreateDataFrame exists only on the classic (non-Connect) implementation of
+// the Spark SQL API. The loader always runs a local classic session, so the cast is safe.
 // Not part of the public API of this project.
 object SnowplowInternalSparkBridge {
-  def reattachSchema(df: DataFrame, schema: StructType): DataFrame =
-    df.sparkSession.internalCreateDataFrame(df.queryExecution.toRdd, schema)
+  def reattachSchema(df: DataFrame, schema: StructType): DataFrame = {
+    val classicDf = df.asInstanceOf[classic.Dataset[Row]]
+    classicDf.sparkSession.internalCreateDataFrame(classicDf.queryExecution.toRdd, schema)
+  }
 }

@@ -180,7 +180,8 @@ class LakeWriterSpec extends Specification with CatsEffect {
     control().flatMap { c =>
       val expected = Vector(
         Action.CommitAttempted("testview"),
-        Action.BecameHealthy(RuntimeService.SparkWriter)
+        Action.BecameHealthy(RuntimeService.SparkWriter),
+        Action.BecameHealthyForSetup
       )
 
       val wrappedLakeWriter = LakeWriter.withHandledErrors(
@@ -212,7 +213,8 @@ class LakeWriterSpec extends Specification with CatsEffect {
 
       val expected = Vector(
         Action.CommitAttempted("testview1"),
-        Action.BecameHealthy(RuntimeService.SparkWriter)
+        Action.BecameHealthy(RuntimeService.SparkWriter),
+        Action.BecameHealthyForSetup
       ) ++ commitAttempts
 
       val wrappedLakeWriter = LakeWriter.withHandledErrors(

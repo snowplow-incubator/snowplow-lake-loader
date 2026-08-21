@@ -14,9 +14,16 @@ import cats.data.NonEmptyList
 import cats.effect.IO
 import cats.effect.kernel.Resource
 import cats.effect.testing.specs2.CatsEffect
+import fs2.io.file.Files
 import org.apache.spark.sql.{Row, SparkSession}
 import org.apache.spark.sql.types.{ArrayType, StringType, StructField, StructType}
 import org.specs2.Specification
+
+import java.net.URI
+
+import com.snowplowanalytics.snowplow.lakes.{Config, TestConfig}
+import com.snowplowanalytics.snowplow.lakes.fs.LakeLoaderFileSystem
+import com.snowplowanalytics.snowplow.lakes.tables.DeltaWriter
 
 import scala.concurrent.duration.DurationInt
 
@@ -39,6 +46,9 @@ class SparkUtilsSpec extends Specification with CatsEffect {
     Keep array element-struct field nullable when the accumulated array already contains nulls for it $e9
     Keep a newly introduced optional struct field nullable when it has no counterpart in the accumulated view $e10
     Keep a doubly-nested struct field nullable when the accumulated view already contains nulls for it $e11
+    Accumulate one partition per batch so the window is not collapsed to a single partition $e13
+  SparkUtils.session for a Delta target on GCS should:
+    Resolve fs.gs.impl to LakeLoaderFileSystem with the hadoop-gcp connector as delegate $e12
   """
 
   // Spark's unionByName generates an internal struct-cast target type where every field defaults to
@@ -689,6 +699,49 @@ class SparkUtilsSpec extends Specification with CatsEffect {
                           })
                       }
     } yield colANullable must beSome(true)
+  }
+
+  // The window must keep one partition per batch, not collapse to a single partition (which would
+  // serialize the map-side read). Asserts N batches -> N partitions.
+  def e13 = withSpark.use { spark =>
+    val viewName = "test_partition_accumulation_e13"
+    val schema   = StructType(Array(StructField("col_a", StringType, nullable = false)))
+
+    def append(row: Row) =
+      SparkUtils.localAppendRows[IO](spark, viewName, NonEmptyList.one(row), schema, shouldRestoreNullability = true)
+
+    for {
+      _ <- SparkUtils.initializeLocalDataFrame[IO](spark, viewName)
+      _ <- append(Row("v1"))
+      _ <- append(Row("v2"))
+      _ <- append(Row("v3"))
+      numPartitions <- IO.blocking(spark.table(viewName).rdd.getNumPartitions)
+    } yield numPartitions must beEqualTo(3)
+  }
+
+  // Guards the LakeLoaderFileSystem override on GCS: the gs scheme resolves to hadoop-gcp via
+  // Hadoop's own core-default.xml, so the override must capture that value as the delegate and
+  // stay visible in both sparkContext.hadoopConfiguration (which it patches) and every conf
+  // derived from it via sessionState.newHadoopConf() — otherwise Delta would resolve the gs
+  // scheme to the raw connector and async delete would be silently disabled on GCS.
+  def e12 = Files[IO].tempDirectory.use { tmpDir =>
+    val config = TestConfig.defaults(TestConfig.Delta, tmpDir)
+    val delta = config.output.good match {
+      case d: Config.Delta => d.copy(location = new URI("gs://bucket/events"))
+      case other           => throw new IllegalStateException(s"Expected a Delta target but got $other")
+    }
+    SparkUtils.session[IO](config.spark, new DeltaWriter(delta), delta).use { spark =>
+      IO.blocking {
+        val contextConf = spark.sparkContext.hadoopConfiguration
+        val derivedConf = spark.sessionState.newHadoopConf()
+        val hadoopGcp   = "org.apache.hadoop.fs.gs.GoogleHadoopFileSystem"
+
+        (contextConf.get("fs.gs.impl") must beEqualTo(classOf[LakeLoaderFileSystem].getName)) and
+          (derivedConf.get("fs.gs.impl") must beEqualTo(classOf[LakeLoaderFileSystem].getName)) and
+          (contextConf.get("fs.gs.lakeloader.delegate.impl") must beEqualTo(hadoopGcp)) and
+          (derivedConf.get("fs.gs.lakeloader.delegate.impl") must beEqualTo(hadoopGcp))
+      }
+    }
   }
 }
 

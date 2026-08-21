@@ -25,8 +25,6 @@ import com.snowplowanalytics.snowplow.lakes.Config
 import com.snowplowanalytics.snowplow.lakes.tables.Writer
 import com.snowplowanalytics.snowplow.lakes.fs.LakeLoaderFileSystem
 
-import scala.jdk.CollectionConverters._
-
 private[processing] object SparkUtils {
 
   private implicit def logger[F[_]: Sync]: Logger[F] = Slf4jLogger.getLogger[F]
@@ -64,12 +62,8 @@ private[processing] object SparkUtils {
       }
   }
 
-  val gcpUserAgent: String = "Google/ISV Solution (GPN:isol_plb32_0014m00002tg62aqad_qufvepzajwfju6jxl5uwg2zn3l3nizte)"
-
-  private def sparkConfigOptions(config: Config.Spark, writer: Writer): Map[String, String] = {
-    val gcpUserAgentKey = "fs.gs.storage.http.headers.user-agent"
-    writer.sparkConfig ++ config.conf + (gcpUserAgentKey -> gcpUserAgent)
-  }
+  private def sparkConfigOptions(config: Config.Spark, writer: Writer): Map[String, String] =
+    writer.sparkConfig ++ config.conf
 
   def initializeLocalDataFrame[F[_]: Sync](spark: SparkSession, viewName: String): F[Unit] =
     for {
@@ -96,9 +90,10 @@ private[processing] object SparkUtils {
              try {
                spark.sparkContext.setLocalProperty("spark.scheduler.pool", "pool1")
                val accumulatedSchema = spark.table(viewName).schema
+               // Stage each batch as one partition.
+               val batchRdd = spark.sparkContext.parallelize(rows.toList, 1)
                val united = spark
-                 .createDataFrame(rows.toList.asJava, igluSchema)
-                 .coalesce(1)
+                 .createDataFrame(batchRdd, igluSchema)
                  .localCheckpoint()
                  .unionByName(spark.table(viewName), allowMissingColumns = true)
                val result = if (shouldRestoreNullability) restoreNullability(igluSchema, accumulatedSchema, united) else united

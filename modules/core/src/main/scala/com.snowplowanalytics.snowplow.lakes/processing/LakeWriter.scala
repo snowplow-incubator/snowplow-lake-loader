@@ -141,7 +141,7 @@ object LakeWriter {
         destinationSetupErrorCheck
       ) { _ =>
         underlying.commit(viewName)
-      }
+      } <* appHealth.beHealthyForSetup
 
     def getTableDataFilesTotal: F[Option[Long]] =
       underlying.getTableDataFilesTotal.handleErrorWith { e =>

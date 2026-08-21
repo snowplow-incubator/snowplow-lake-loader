@@ -76,6 +76,13 @@ class DeltaWriter(config: Config.Delta) extends Writer {
           case e: DeltaAnalysisException if e.errorClass === Some("DELTA_CREATE_TABLE_SCHEME_MISMATCH") =>
             // Expected when table exists and contains some unstruct_event or context columns
             Logger[F].debug(s"Caught and ignored DeltaAnalysisException")
+          case e: DeltaAnalysisException if e.errorClass === Some("DELTA_CREATE_TABLE_WITH_DIFFERENT_PROPERTY") =>
+            // Expected when the table was created by an older loader whose default table properties
+            // differ from the current defaults, e.g. tables from before delta.deletedFileRetentionDuration
+            // was added. An existing table keeps its properties. Delta only reaches this comparison
+            // when the table's schema exactly matches the requested one: schema differences throw
+            // DELTA_CREATE_TABLE_SCHEME_MISMATCH (ignored above) before properties are compared.
+            Logger[F].debug(s"Caught and ignored DeltaAnalysisException")
         }
   }
 
