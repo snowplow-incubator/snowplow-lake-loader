@@ -1,3 +1,12 @@
+Version 0.11.0 (2026-06-16)
+---------------------------
+Bump dependencies to fix CVEs (#52)
+Triage Databricks Unity Catalog setup errors for Iceberg REST catalog (#51)
+add .publishignore (#50)
+Bump sbt-snowplow-release to 0.7.0 (#49)
+Bump Iceberg to 1.11.0 (#48)
+Consume Snowman's async rollout dispatch (#47)
+
 Version 0.10.0 (2026-05-11)
 ---------------------------
 Bump common-streams to 0.24.1 (#45)

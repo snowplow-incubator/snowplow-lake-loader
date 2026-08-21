@@ -28,14 +28,14 @@ object Dependencies {
 
     // Spark
     val delta        = "3.3.2"
-    val iceberg      = "1.10.1"
+    val iceberg      = "1.11.0"
     val hadoop       = "3.4.3"
     val gcsConnector = "hadoop3-2.2.25"
     val hive         = "3.1.3"
 
     // java
     val slf4j       = "2.0.13"
-    val azureSdk    = "1.18.0"
+    val azureSdk    = "1.18.4"
     val awsSdk1     = "1.12.777"
     val awsSdk2     = "2.42.23" // Match common-streams
     val awsRegistry = "1.1.20"
@@ -48,15 +48,17 @@ object Dependencies {
     // Transitive overrides
     val protobuf      = "3.25.5"
     val snappy        = "1.1.10.5"
-    val netty         = "4.1.133.Final"
+    val netty         = "4.1.135.Final"
     val pubsubSdk     = "1.134.1"
-    val jackson       = "2.18.1"
+    val jackson       = "2.18.7"
     val kafka         = "3.9.2"
     val grpcNetty     = "1.75.0"
     val commonsLang3  = "3.18.0"
     val lz4           = "1.10.1"
-    val log4jCore     = "2.25.3"
+    val log4jCore     = "2.25.4"
     val aircompressor = "2.0.3"
+    val micrometer    = "1.16.6"
+    val opentelemetry = "1.62.0"
 
     // tests
     val specs2           = "4.20.0"
@@ -110,6 +112,8 @@ object Dependencies {
   val lz4           = "at.yawk.lz4"                    % "lz4-java"                           % V.lz4
   val log4jCore     = "org.apache.logging.log4j"       % "log4j-core"                         % V.log4jCore
   val aircompressor = "io.airlift"                     % "aircompressor"                      % V.aircompressor
+  val micrometer    = "io.micrometer"                  % "micrometer-core"                    % V.micrometer
+  val opentelemetry = "io.opentelemetry"               % "opentelemetry-api"                  % V.opentelemetry
 
   // snowplow
   val streamsCore      = "com.snowplowanalytics" %% "streams-core"             % V.streams
@@ -130,7 +134,8 @@ object Dependencies {
     protobuf      % Runtime,
     netty         % Runtime,
     snappy        % Runtime,
-    aircompressor % Runtime
+    aircompressor % Runtime,
+    micrometer    % Runtime
   )
 
   val coreDependencies = Seq(
@@ -183,7 +188,8 @@ object Dependencies {
     pubsub,
     pubsubSdk,
     gcsConnector,
-    grpcNetty
+    grpcNetty,
+    opentelemetry % Runtime
   ) ++ commonRuntimeDependencies
 
   val commonExclusions = Seq(

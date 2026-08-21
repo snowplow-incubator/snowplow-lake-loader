@@ -15,6 +15,7 @@ import org.apache.iceberg.exceptions.{
   ForbiddenException => IcebergForbiddenException,
   NoSuchIcebergTableException,
   NoSuchNamespaceException,
+  NoSuchWarehouseException,
   NotAuthorizedException,
   NotFoundException => IcebergNotFoundException,
   RESTException
@@ -71,18 +72,26 @@ object TableFormatSetupError {
           Some("IAM role of the REST catalog is missing permissions")
         else if (checkRestCatalogRolePermissionError(e))
           Some("REST catalog role is missing permissions")
+        else if (checkDatabricksPermissionError(e))
+          Some("Missing privileges on the catalog, schema or table")
         else
           None
       case e: NoSuchNamespaceException =>
         Some(e.getMessage)
+      case e: BadRequestException if messageContains(e, "CATALOG_DOES_NOT_EXIST") =>
+        // Databricks responds with HTTP 400 when the catalog (warehouse) does not exist
+        Some("Unable to find given catalog")
+      case e: BadRequestException if messageContains(e, "is not an Iceberg compatible table") =>
+        // Databricks responds with HTTP 400 when the table exists but is not in Iceberg format
+        Some("Target table is not an Iceberg table")
       case e: BadRequestException =>
         extractOauthErrorType(e).map(oauthErrorMessage)
       case e: NotAuthorizedException =>
         extractOauthErrorType(e).map(oauthErrorMessage)
+      case _: NoSuchWarehouseException =>
+        Some("Unable to find given catalog")
       case e: RESTException if e.getMessage.contains("Unable to process") =>
-        if (e.getMessage.contains("Unable to find warehouse"))
-          Some("Unable to find given catalog")
-        else if (e.getMessage.contains("Service: S3, Status Code: 301"))
+        if (e.getMessage.contains("Service: S3, Status Code: 301"))
           Some(
             "REST catalog returned an error. Check your REST catalog configuration. A possible cause is invalid S3 bucket region for this catalog"
           )
@@ -90,8 +99,21 @@ object TableFormatSetupError {
           Some("REST catalog returned an error. Check your REST catalog configuration")
       case e: RESTException if Option(e.getCause).exists(_.isInstanceOf[UnknownHostException]) =>
         Some("REST catalog URI isn't reachable")
+      case e: RESTException if Option(e.getCause).exists(c => messageContains(c, "Target host is not specified")) =>
+        // The http client rejects a catalog URI without a scheme or host before sending any request
+        Some("REST catalog URI is invalid. Check your REST catalog configuration")
       case _ => None
     }
+
+    private def messageContains(t: Throwable, fragment: String): Boolean =
+      Option(t.getMessage).exists(_.contains(fragment))
+
+    /**
+     * Databricks Unity Catalog responds with this same message for any missing privilege, e.g. USE
+     * CATALOG, USE SCHEMA, CREATE TABLE or MODIFY
+     */
+    private def checkDatabricksPermissionError(exception: IcebergForbiddenException): Boolean =
+      messageContains(exception, "Not authorized to make this request")
 
     private def checkFileReadPermissionError(exception: IcebergForbiddenException): Boolean = {
       val badRequestPattern = """.*Forbidden: Failed to read file.*""".r
